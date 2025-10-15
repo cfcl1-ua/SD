@@ -11,17 +11,18 @@ def send(msg):
     msg_length = len(message)
     send_length = str(msg_length).encode(FORMAT)
     send_length += b' ' * (HEADER - len(send_length))
+    #cambiar esto ya que es solo para central y no para engine
     client.send(send_length)
     client.send(message)
     
 ########## MAIN ##########
 
 
-print("****** WELCOME TO OUR BRILLIANT SD UA CURSO 2020/2021 SOCKET CLIENT ****")
+print("****** Arrancar monitor de CP ****")
 
-if  (len(sys.argv) == 6):
+if  True:#(len(sys.argv) == 3):
     SERVER = sys.argv[1]
-    PORT = sys-argv[2]
+    PORT = int(sys.argv[2])
     ADDR = (SERVER, PORT)
     Engine=sys.argv[3]
     Eng_Port=sys.argv[4]
@@ -42,7 +43,9 @@ if  (len(sys.argv) == 6):
     msg_stat="Ok"
     print("Enviar estado de CP: ", msg_conf)
     client.sendall(msg_conf)
+    
     #mensaje repetitivo de monitor a engine
+
     while True:    
         try:
             client_engine.sendall(msg_stat)
@@ -64,5 +67,7 @@ if  (len(sys.argv) == 6):
     print ("SE ACABO LO QUE SE DABA")
     client.close()
     client_engine.close()
+ 
+
 else:
     print ("Oops!. Parece que algo falló. Necesito estos argumentos: <ServerIP> <Puerto> <Server_engine> <Puerto_engine> <ID>")
