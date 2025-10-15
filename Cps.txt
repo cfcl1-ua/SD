@@ -1,0 +1,10 @@
+CP01, Parking Norte
+CP02, Parking Sur
+CP03, Parking Centro Comercial
+CP04, Aparcamiento Universidad
+CP05, Garaje Subterráneo A
+CP06, Estación de Autobuses
+CP07, Centro Deportivo Municipal
+CP08, Aeropuerto Terminal 2
+CP09, Calle Mayor 45
+CP10, Polígono Industrial Oeste
