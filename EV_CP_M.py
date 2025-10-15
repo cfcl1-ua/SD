@@ -43,22 +43,23 @@ if  (len(sys.argv) == 6):
     print("Enviar estado de CP: ", msg_conf)
     client.sendall(msg_conf)
     #mensaje repetitivo de monitor a engine
-    while True:
-        client_engine.sendall(msg_stat)
-        print("Recibo del Servidor: ", client_engine.recv(2048).decode(FORMAT))
-        msg=input()
-        status=client_engine.recv(2048).decode(FORMAT)
-        time.sleep(1)
-        #si el server te dice que ko
-        if(status=="ko"):
-            msg_stat="ko"
-            client.sendall(msg_stat)
-        
-        except(BrokenPipeError, ConnectionResetError):
-            print(f"se perdio la conexion")
-            msg_stat="ko"
-            client.sendall(msg_stat)
-            break
+    while True:    
+        try:
+            client_engine.sendall(msg_stat)
+            print("Recibo del Servidor: ", client_engine.recv(2048).decode(FORMAT))
+            msg=input()
+            status=client_engine.recv(2048).decode(FORMAT)
+            time.sleep(1)
+            #si el server te dice que ko
+            if(status=="ko"):
+                msg_stat="ko"
+                client.sendall(msg_stat)
+            
+        except (BrokenPipeError, ConnectionResetError):
+                print(f"se perdio la conexion")
+                msg_stat="ko"
+                client.sendall(msg_stat)
+                break
 
     print ("SE ACABO LO QUE SE DABA")
     client.close()
