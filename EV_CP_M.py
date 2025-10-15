@@ -1,33 +1,67 @@
-import json, time, os, argparse
-from confluent_kafka import Producer
-BOOTSTRAP_SERVERS="localhost:9092"
-TOPIC_CP_REGISTER="cp.register"
-TOPIC_CP_HEALTH="cp.health"
+import socket
+import sys
+import time
 
-def logline(fname, obj):
-    os.makedirs("logs", exist_ok=True)
-    with open(os.path.join("logs", fname),"a",encoding="utf-8") as f:
-        f.write(json.dumps(obj)+"\n")
+HEADER = 64
+FORMAT = 'utf-8'
+FIN = "FIN"
 
-def main():
-    ap=argparse.ArgumentParser()
-    ap.add_argument("--cpId",required=True)
-    ap.add_argument("--location",default="LAB")
-    ap.add_argument("--price",type=float,default=0.25)
-    ap.add_argument("--period",type=int,default=5)
-    args=ap.parse_args()
+def send(msg):
+    message = msg.encode(FORMAT)
+    msg_length = len(message)
+    send_length = str(msg_length).encode(FORMAT)
+    send_length += b' ' * (HEADER - len(send_length))
+    client.send(send_length)
+    client.send(message)
+    
+########## MAIN ##########
 
-    p=Producer({"bootstrap.servers":BOOTSTRAP_SERVERS})
-    reg={"cpId":args.cpId,"location":args.location,"price":args.price}
-    p.produce(TOPIC_CP_REGISTER,json.dumps(reg).encode());p.flush()
-    logline("cp_manager.txt",{"event":"register",**reg})
-    print("[CP_M]",args.cpId,"registrado")
 
+print("****** WELCOME TO OUR BRILLIANT SD UA CURSO 2020/2021 SOCKET CLIENT ****")
+
+if  (len(sys.argv) == 6):
+    SERVER = sys.argv[1]
+    PORT = sys-argv[2]
+    ADDR = (SERVER, PORT)
+    Engine=sys.argv[3]
+    Eng_Port=sys.argv[4]
+    Eng_addr=(Engine, Eng_Port)
+    IP_CP=sys.argv[5]
+    
+    
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client.connect(ADDR)
+    print (f"Establecida conexión con central")
+    
+    client_engine= socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_engine.connect(ADDR)
+    print (f"Conexion establecida con engine")
+
+    #mensaje de confirmacion de central
+    msg_conf=IP_CP
+    msg_stat="Ok"
+    print("Enviar estado de CP: ", msg_conf)
+    client.sendall(msg_conf)
+    #mensaje repetitivo de monitor a engine
     while True:
-        hb={"cpId":args.cpId,"status":"ACTIVO","ts":int(time.time())}
-        p.produce(TOPIC_CP_HEALTH,json.dumps(hb).encode());p.poll(0)
-        logline("cp_manager.txt",{"event":"heartbeat",**hb})
-        print("[CP_M] HB",args.cpId)
-        time.sleep(args.period)
+        client_engine.sendall(msg_stat)
+        print("Recibo del Servidor: ", client_engine.recv(2048).decode(FORMAT))
+        msg=input()
+        status=client_engine.recv(2048).decode(FORMAT)
+        time.sleep(1)
+        #si el server te dice que ko
+        if(status=="ko"):
+            msg_stat="ko"
+            client.sendall(msg_stat)
+        
+        except(BrokenPipeError, ConnectionResetError):
+            print(f"se perdio la conexion")
+            msg_stat="ko"
+            client.sendall(msg_stat)
+            break
 
-if __name__=="__main__":main()
+    print ("SE ACABO LO QUE SE DABA")
+    client.close()
+    client_engine.close()
+else:
+    print ("Oops!. Parece que algo falló. Necesito estos argumentos: <ServerIP> <Puerto> <Server_engine> <Puerto_engine> <ID>")
