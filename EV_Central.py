@@ -50,6 +50,33 @@ def start(server):
         
 #########################################################
 
+# Tarea 2b
+
+
+# Tarea 2a
+def registrarCP(fich: str, nuevo_cp: ChargingPoint):
+    """
+    Registra (da de alta) un nuevo punto de recarga en el fichero.
+    - Comprueba si ya existe un CP con el mismo ID.
+    - Si no existe, lo añade al final del fichero.
+    - Devuelve True si se ha registrado correctamente, False si ya existía.
+    """
+    cps = cargarCPs(fich)
+
+    # comprobar si ya existe un CP con la misma ID
+    for cp in cps:
+        if cp.id == nuevo_cp.id:   # adapta el nombre del atributo si es distinto
+            print(f"[WARN] Ya existe un CP con ID '{nuevo_cp.id}'. No se registra.")
+            return False
+
+    # si no existe, lo añadimos al fichero
+    with open(fich, "a", encoding="utf-8") as f:
+        f.write(f"{nuevo_cp.id}, {nuevo_cp.location}\n")
+
+    print(f"[INFO] CP '{nuevo_cp.id}' registrado correctamente en {fich}.")
+    return True
+
+# Tarea 1
 def cargarCPs(fich: str):
     """
     Lee un fichero de puntos de recarga con formato fijo:
@@ -75,7 +102,7 @@ def main():
     CPs = cargarCPs(fich)
 
     for p in CPs:
-        p.activate()
+        p.deactivate(self)
         print(p.get_info()) 
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
