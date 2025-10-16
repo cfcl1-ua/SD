@@ -22,6 +22,15 @@ def handle_client(conn, addr):
             msg = conn.recv(msg_length).decode(FORMAT)
             if msg == FIN:
                 connected = False
+            else:
+                parts = msg.split("|") # split quita los separadores y convierte el mensaje en una lista 
+                if parts[0] == "driver":
+                    # El mensaje viene de un driver
+                    resp = attendToDriver(parts[1], parts[2]) # peticion, cliente
+                else:
+                    # Otro tipo de mensaje o formato
+                    resp = f"Mensaje de origen no reconocido: {msg}"
+
             print(f" He recibido del cliente [{addr}] el mensaje: {msg}")
             conn.send(f"HOLA CLIENTE: He recibido tu mensaje: {msg} ".encode(FORMAT))
     print("ADIOS. TE ESPERO EN OTRA OCASION")
@@ -51,7 +60,8 @@ def start(server):
 #########################################################
 
 # Tarea 2b
-
+def attendToDriver(peticion, id_cliente):
+    
 
 # Tarea 2a
 def registrarCP(fich: str, nuevo_cp: ChargingPoint):
@@ -111,5 +121,7 @@ def main():
 
     print("[STARTING] Servidor inicializándose...")
     start(server)
+    
+    
 
 if __name__=="__main__": main()
