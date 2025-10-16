@@ -48,7 +48,7 @@ def SelectServices(sock, cliente):
             
                 # Preparar y enviar mensaje según servicio
                 if servicio.get_tipo() == Servicio.Tipo.REGISTRO:
-                    msg = f"REGISTRO|{cliente.getID()}" 
+                    msg = f"driver|REGISTRO|{cliente.getID()}" 
                     print("[DRV]: ", msg)
                     send(sock, msg)
                     resp = recv(sock)
@@ -59,7 +59,7 @@ def SelectServices(sock, cliente):
                     if not cp_id:
                         print("CP_ID vacío, cancelo solicitud.")
                         continue
-                    msg = f"AUTORIZACION|{cliente.getID()}|{cp_id}" 
+                    msg = f"driver|AUTORIZACION|{cliente.getID()}|{cp_id}" 
                     print("[DRV] ", msg)
                     send(sock, msg)
                     resp = recv(sock)
@@ -70,7 +70,7 @@ def SelectServices(sock, cliente):
                     if not cp_id:
                         print("CP_ID vacío, cancelo consulta.")
                         continue
-                    msg = f"ESTADO|{cp_id}" 
+                    msg = f"driver|ESTADO|{cp_id}" 
                     print("[DRV] ", msg)
                     send(sock, msg)
                     resp = recv(sock)
