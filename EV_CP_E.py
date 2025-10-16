@@ -1,51 +1,93 @@
-import json, time, os, argparse, random
-from confluent_kafka import Consumer, Producer, KafkaException
-BOOTSTRAP_SERVERS="localhost:9092"
-TOPIC_CMDS="central.commands"
-TOPIC_TELEMETRY="telemetry.stream"
+import socket 
+import threading
 
-def logline(fname,obj):
-    os.makedirs("logs",exist_ok=True)
-    with open(os.path.join("logs",fname),"a",encoding="utf-8") as f:
-        f.write(json.dumps(obj)+"\n")
+
+HEADER = 64
+PORT = 5050
+SERVER = socket.gethostbyname(socket.gethostname())
+ADDR = (SERVER, PORT)
+FORMAT = 'utf-8'
+FIN = "FIN"
+MAX_CONEXIONES = 2
+
+def handle_client(conn, addr):
+    print(f"[NUEVA CONEXION] {addr} connected.")
+
+    connected = True
+    while connected:
+        msg_length = conn.recv(HEADER).decode(FORMAT)
+        if msg_length:
+            msg_length = int(msg_length)
+            msg = conn.recv(msg_length).decode(FORMAT)
+            if msg == FIN:
+                connected = False
+            print(f" He recibido del cliente [{addr}] el mensaje: {msg}")
+            print(f"Que hacer ahora? ok or ko")
+            msg=input()
+            conn.send(f"msg"encode(FORMAT))
+    print("ADIOS. TE ESPERO EN OTRA OCASION")
+    conn.close()
+    
+        
+
+def start():
+    server.listen()
+    print(f"[LISTENING] Servidor a la escucha en {SERVER}")
+    CONEX_ACTIVAS = threading.active_count()-1
+    print(CONEX_ACTIVAS)
+    while True:
+        conn, addr = server.accept()
+        CONEX_ACTIVAS = threading.active_count()
+        if (CONEX_ACTIVAS <= MAX_CONEXIONES): 
+            thread = threading.Thread(target=handle_client, args=(conn, addr))
+            thread.start()
+            print(f"[CONEXIONES ACTIVAS] {CONEX_ACTIVAS}")
+            print("CONEXIONES RESTANTES PARA CERRAR EL SERVICIO", MAX_CONEXIONES-CONEX_ACTIVAS)
+        else:
+            print("OOppsss... DEMASIADAS CONEXIONES. ESPERANDO A QUE ALGUIEN SE VAYA")
+            conn.send("OOppsss... DEMASIADAS CONEXIONES. Tendrás que esperar a que alguien se vaya".encode(FORMAT))
+            conn.close()
+            CONEX_ACTUALES = threading.active_count()-1
+        
+
+def conectar_central(addr, id_cp):
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client.connect(addr)
+    
+    msg=f"Auntentificar {ID}"
+    send(msg, client)
+    
+    response=client.recv(2048).decode(FORMAT)
+    #mensaje de confirmacion de central
+    if response == "ok":
+        print(f"Autentificacion correcta")
+        
+    else:
+        print(f"Error al conectar con central")
+        cliente.close()
+        return None
+    
+    return client
+    
+
+######################### MAIN ##########################
 
 def main():
-    ap=argparse.ArgumentParser()
-    ap.add_argument("--cpId",required=True)
-    ap.add_argument("--price",type=float,default=0.25)
-    ap.add_argument("--duration",type=int,default=10)
-    args=ap.parse_args()
+    SERVER = sys.argv[1]
+    PORT = int(sys.argv[2])
+    IP_CP=sys.argv[3]
+    '''
+    ip_broker=sys.argv[4]
+    port_broker=sys.argv[5]
+    '''
+    ADDR = (SERVER, PORT)
+    conectar_central(ADDR, IP_CP)
+    
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind(ADDR)
 
-    c=Consumer({
-        "bootstrap.servers":BOOTSTRAP_SERVERS,
-        "group.id":f"cp-e-{args.cpId}",
-        "auto.offset.reset":"latest"
-    })
-    p=Producer({"bootstrap.servers":BOOTSTRAP_SERVERS})
-    c.subscribe([TOPIC_CMDS])
-    print(f"[CP_E {args.cpId}] Esperando órdenes…")
+    print("[STARTING] Servidor inicializándose...")
 
-    while True:
-        msg=c.poll(1)
-        if not msg: continue
-        if msg.error(): raise KafkaException(msg.error())
-        try: cmd=json.loads(msg.value().decode())
-        except: continue
-        if cmd.get("cpId")!=args.cpId: continue
-        if cmd.get("type")=="start":
-            driver=cmd.get("driverId")
-            print(f"[CP_E {args.cpId}] START {driver}")
-            total=0.0
-            for _ in range(args.duration):
-                total+=random.uniform(0.3,0.6)
-                euros=round(total*args.price,2)
-                tel={"cpId":args.cpId,"driverId":driver,"kWh":round(total,2),"euros":euros}
-                p.produce(TOPIC_TELEMETRY,json.dumps(tel).encode());p.poll(0)
-                logline("cp_executor.txt",{"event":"telemetry",**tel})
-                time.sleep(1)
-            fin={"type":"finished","cpId":args.cpId,"driverId":driver,"totalKWh":round(total,2),"totalEuros":round(total*args.price,2)}
-            p.produce(TOPIC_TELEMETRY,json.dumps(fin).encode());p.flush()
-            logline("cp_executor.txt",{"event":"finished",**fin})
-            print("[CP_E] FIN",fin)
+    start()
 
-if __name__=="__main__":main()
+if __name__=="__main__": main()

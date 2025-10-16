@@ -6,68 +6,84 @@ HEADER = 64
 FORMAT = 'utf-8'
 FIN = "FIN"
 
-def send(msg):
+#Mensaje que mandara al servidor 
+def send(msg, client_socket):
     message = msg.encode(FORMAT)
     msg_length = len(message)
     send_length = str(msg_length).encode(FORMAT)
     send_length += b' ' * (HEADER - len(send_length))
     #cambiar esto ya que es solo para central y no para engine
-    client.send(send_length)
-    client.send(message)
+    client_socket.send(send_length)
+    client_socket.send(message)
     
+#funcion que conecta con central
+def conectar_central(addr, ID):
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client.connect(addr)
+    
+    msg=f"Auntentificar {ID}"
+    send(msg, client)
+    
+    response=client.recv(2048).decode(FORMAT)
+    #mensaje de confirmacion de central
+    if response == "ok":
+        print(f"Autentificacion correcta")
+        
+    else:
+        print(f"Error al conectar con central")
+        cliente.close()
+        return None
+    
+    return client
 ########## MAIN ##########
 
+def main():
+    print("****** Arrancar monitor de CP ****")
+#lista de argumentos
+    if (len(sys.argv) == 6):
+        SERVER = sys.argv[1]
+        PORT = int(sys.argv[2])
+        
+        ADDR = (SERVER, PORT)
+        '''
+        Engine=sys.argv[3]
+        Eng_Port=sys.argv[4]
+        Eng_addr=(Engine, Eng_Port)
+        IP_CP=sys.argv[5]
+      '''  
+        '''
+        client_engine= socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_engine.connect(ADDR)
+        print (f"Conexion establecida con engine")
+'''
+        
+        
+        #mensaje repetitivo de monitor a engine
 
-print("****** Arrancar monitor de CP ****")
+        while True:    
+            try:
+                send(msg_stat, client_engine)
+                print("Recibo del Servidor: ", client_engine.recv(2048).decode(FORMAT))
+                status=client_engine.recv(2048).decode(FORMAT)
+                time.sleep(1)
+                #si el server te dice que ko
+                if(status=="ko"):
+                    msg_stat="ko"
+                    send(msg_stat, client_engine)
+                    printf("Averia reportada")
+                
+            except (BrokenPipeError, ConnectionResetError):
+                    print(f"se perdio la conexion")
+                    msg_stat="ko"
+                    send(msg_stat, client)
+                    printf("Averia reportada a central")
+                    break
 
-if  True:#(len(sys.argv) == 3):
-    SERVER = sys.argv[1]
-    PORT = int(sys.argv[2])
-    ADDR = (SERVER, PORT)
-    Engine=sys.argv[3]
-    Eng_Port=sys.argv[4]
-    Eng_addr=(Engine, Eng_Port)
-    IP_CP=sys.argv[5]
-    
-    
-    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client.connect(ADDR)
-    print (f"Establecida conexión con central")
-    
-    client_engine= socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_engine.connect(ADDR)
-    print (f"Conexion establecida con engine")
+        print ("SE ACABO LO QUE SE DABA")
+        client.close()
+        client_engine.close()
+     
+    else:
+        print ("Oops!. Parece que algo falló. Necesito estos argumentos: <ServerIP> <Puerto> <Server_engine> <Puerto_engine> <ID>")
 
-    #mensaje de confirmacion de central
-    msg_conf=IP_CP
-    msg_stat="Ok"
-    print("Enviar estado de CP: ", msg_conf)
-    client.sendall(msg_conf)
-    
-    #mensaje repetitivo de monitor a engine
-
-    while True:    
-        try:
-            client_engine.sendall(msg_stat)
-            print("Recibo del Servidor: ", client_engine.recv(2048).decode(FORMAT))
-            msg=input()
-            status=client_engine.recv(2048).decode(FORMAT)
-            time.sleep(1)
-            #si el server te dice que ko
-            if(status=="ko"):
-                msg_stat="ko"
-                client.sendall(msg_stat)
-            
-        except (BrokenPipeError, ConnectionResetError):
-                print(f"se perdio la conexion")
-                msg_stat="ko"
-                client.sendall(msg_stat)
-                break
-
-    print ("SE ACABO LO QUE SE DABA")
-    client.close()
-    client_engine.close()
- 
-
-else:
-    print ("Oops!. Parece que algo falló. Necesito estos argumentos: <ServerIP> <Puerto> <Server_engine> <Puerto_engine> <ID>")
+if __name__=="__main__": main()
