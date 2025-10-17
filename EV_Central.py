@@ -10,6 +10,11 @@ ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 FIN = "FIN"
 MAX_CONEXIONES = 2
+CLIENTES_FILE = "Clientes.txt"
+CPS_FILE = "Cps.txt"
+CPs = []
+CPs_IDX = []
+CUSTOMER_IDX = []
 
 def handle_client(conn, addr):
     print(f"[NUEVA CONEXION] {addr} connected.")
@@ -60,8 +65,68 @@ def start(server):
 #########################################################
 
 # Tarea 2b
-def attendToDriver(peticion, id_cliente):
-    
+def searchCP(cp_id):
+    """
+    Busca un Charging Point por su ID.
+    Devuelve:
+        (True, cp)  -> si el CP existe
+        (False, None) -> si no se encuentra
+    """
+    for cp in CPs:
+        if cp.getId() == cp_id:
+            return True, cp
+    return False, None
+
+
+def searchCustomer(id_cliente):
+    return id_cliente in CUSTOMER_IDX
+
+
+def addCustomer(id_cliente):
+    if not searchCustomer(id_cliente):  
+        CUSTOMER_IDX.append(id_cliente)
+        with open(CLIENTES_FILE, "a", encoding="utf-8") as f:
+            f.write(id_cliente + "\n")
+        return True
+    return False
+
+
+def getCPStatus(cp_id):
+    for cp in CPs:
+        if cp.getId() == cp_id:
+            return cp.estado
+    return None
+
+
+def attendToDriver(peticion, id_cliente, id_cp=None):
+    p = peticion.strip()
+
+    if p == "REGISTRO":
+        if addCustomer(id_cliente):
+            return "Usuario registrado"
+        else:
+            return "Error: Usuario ya registrado"
+
+    elif p == "AUTORIZACION":
+        cp_id = id_cp.strip()
+        found, cp = searchCP(cp_id)
+        if not found:
+            return "Charging Point no encontrado"
+        else:
+            if cp.getStatus() == "IDLE":
+                cp.start_supply()
+                return "Peticion aceptada"
+            else:
+                return "Peticion denegada"
+
+    else:  # ESTADO
+        cp_id = (id_cp or "").strip()
+        found, cp = searchCP(cp_id)
+
+        if not found:
+            return "Charging Point no encontrado"
+        else:
+            return cp.getStatus() 
 
 # Tarea 2a
 def registrarCP(fich: str, nuevo_cp: ChargingPoint):
@@ -105,14 +170,14 @@ def cargarCPs(fich: str):
 
 
 ######################### MAIN ##########################
-    
 
 def main():
-    fich = sys.argv[1] if len(sys.argv) > 1 else "Cps.txt"
+    fich = sys.argv[1] if len(sys.argv) > 1 else CPS_FILE
     CPs = cargarCPs(fich)
 
     for p in CPs:
-        p.deactivate(self)
+        CPs.append(p)
+        CPs_IDX.append(p.getId())
         print(p.get_info()) 
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
