@@ -46,6 +46,12 @@ class ChargingPoint:
             "supplying": self.supplying,
             "status": self.status
         }
+    
+    def getId(self):
+        return self.id
+    
+    def getStatus(self):
+        return self.status
 
     def __repr__(self):
         return f"<ChargingPoint id={self.id} status={self.status} active={self.active}>"
