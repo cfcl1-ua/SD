@@ -21,51 +21,54 @@ def conectar_central(addr, ID):
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.connect(addr)
     
-    msg=f"Auntentificar {ID}"
+    msg=f"monitor|ok|{ID}"
     send(msg, client)
     
     response=client.recv(2048).decode(FORMAT)
     #mensaje de confirmacion de central
-    if response == "ok":
+    print(response)
+    if int(response) == 1:
         print(f"Autentificacion correcta")
         
     else:
         print(f"Error al conectar con central")
-        cliente.close()
+        client.close()
         return None
-    
     return client
 ########## MAIN ##########
 
 def main():
     print("****** Arrancar monitor de CP ****")
 #lista de argumentos
-    if (len(sys.argv) == 6):
+    if (len(sys.argv) == 4):
         SERVER = sys.argv[1]
         PORT = int(sys.argv[2])
-        
+        IP_CP=sys.argv[3]
         ADDR = (SERVER, PORT)
+        client=conectar_central(ADDR, IP_CP)
+        client.close()
         '''
         Engine=sys.argv[3]
         Eng_Port=sys.argv[4]
         Eng_addr=(Engine, Eng_Port)
         IP_CP=sys.argv[5]
       '''  
-        '''
+    '''
         client_engine= socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client_engine.connect(ADDR)
         print (f"Conexion establecida con engine")
-'''
+    '''
         
         
         #mensaje repetitivo de monitor a engine
-
-        while True:    
-            try:
-                send(msg_stat, client_engine)
-                print("Recibo del Servidor: ", client_engine.recv(2048).decode(FORMAT))
-                status=client_engine.recv(2048).decode(FORMAT)
-                time.sleep(1)
+'''
+      while True:
+          try:
+              
+              send(msg_stat, client_engine)
+              print("Recibo del Servidor: ", client_engine.recv(2048).decode(FORMAT))
+              status=client_engine.recv(2048).decode(FORMAT)
+              time.sleep(1)
                 #si el server te dice que ko
                 if(status=="ko"):
                     msg_stat="ko"
@@ -82,8 +85,8 @@ def main():
         print ("SE ACABO LO QUE SE DABA")
         client.close()
         client_engine.close()
-     
-    else:
-        print ("Oops!. Parece que algo falló. Necesito estos argumentos: <ServerIP> <Puerto> <Server_engine> <Puerto_engine> <ID>")
+     '''
+    #else:
+     #   print ("Oops!. Parece que algo falló. Necesito estos argumentos: <ServerIP> <Puerto> <Server_engine> <Puerto_engine> <ID>")
 
 if __name__=="__main__": main()

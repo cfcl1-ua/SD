@@ -24,7 +24,7 @@ def handle_client(conn, addr):
             print(f" He recibido del cliente [{addr}] el mensaje: {msg}")
             print(f"Que hacer ahora? ok or ko")
             msg=input()
-            conn.send(f"msg"encode(FORMAT))
+            conn.send(f"msg".encode(FORMAT))
     print("ADIOS. TE ESPERO EN OTRA OCASION")
     conn.close()
     
@@ -54,12 +54,12 @@ def conectar_central(addr, id_cp):
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.connect(addr)
     
-    msg=f"Auntentificar {ID}"
+    msg=f"engine|ok|{ID}"
     send(msg, client)
     
     response=client.recv(2048).decode(FORMAT)
     #mensaje de confirmacion de central
-    if response == "ok":
+    if response == "Server y engine conectados":
         print(f"Autentificacion correcta")
         
     else:
@@ -87,7 +87,7 @@ def main():
     server.bind(ADDR)
 
     print("[STARTING] Servidor inicializándose...")
-
+'''
     start()
-
+'''
 if __name__=="__main__": main()
