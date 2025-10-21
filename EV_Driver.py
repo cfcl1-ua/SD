@@ -1,9 +1,8 @@
-import socket
+from kafka import KafkaProducer, KafkaConsumer
 import sys
 import time
+import threading
 from Cliente import Cliente
-from Servicio import Servicio
-
 
 HEADER = 64
 PORT = 5050
@@ -11,101 +10,99 @@ FORMAT = 'utf-8'
 FIN = "FIN"
 DELAYS = 4  # segundos entre solicitudes
 
-def send(sock, msg):
-    message = msg.encode(FORMAT)
-    msg_length = len(message)
-    send_length = str(msg_length).encode(FORMAT)
-    send_length += b' ' * (HEADER - len(send_length))
-    sock.send(send_length)
-    sock.send(message)
+# Tópicos
+TOPIC_REQUESTS = "driver-to-central"     # Driver -> Central
+TOPIC_ANSWERS  = "central-to-driver"     # Central -> Driver
 
-def recv(sock):
-    return sock.recv(2048).decode(FORMAT)
+def sendRequests(bootstrap_server, driver):
+    """
+    Envía mensajes en texto plano, separados por '|', al topic 'driver-to-central'.
+    Ejemplo de formato: 'REGISTRO|DRV001|CP01'
+    """
+    producer = KafkaProducer(
+        bootstrap_servers=[bootstrap_server],
+        value_serializer=lambda v: v.encode(FORMAT)  # string -> bytes
+    )
 
-def SelectServices(sock, cliente):
-    """
-    Muestra una vez los servicios disponibles y permite al usuario,
-    en bucle, solicitar servicios cada 4 segundos. Imprime la respuesta
-    de la Central para cada solicitud. Escribe 0 o FIN para salir.
-    """
-    print("\n=== Servicios disponibles ===")
-    print("0 - salir")
-    print("1 - Registro de usuario")
-    print("2 - Solicitar autorización de suministro")
-    print("3 - Consultar estado de un CP")
-    print("=============================\n")
+    print(f"[DRIVER] Conectado a Kafka en {bootstrap_server}")
+    print("Introduce los mensajes en formato: TIPO|DRIVER_ID|CP_ID  (usa FIN para salir)")
 
     while True:
-        op = input("Selecciona servicio (1, 2 o 3): ").strip()
-        n = int(op)
-        
-        if n==0:
+        msg = input("> ").strip()
+        if not msg:
+            continue
+
+        if msg.upper().startswith(FIN):
+            # Enviamos FIN incluyendo el driver_id para que la central pueda filtrar si lo necesita
+            fin_msg = f"{FIN}|{driver.getId()}"
+            producer.send(TOPIC_REQUESTS, fin_msg)
+            producer.flush()
+            print("[DRIVER] Fin de sesión.")
             break
-        else:
-            # Validar opción -> crear Servicio
-            try:
-                servicio = Servicio(n)
-            
-                # Preparar y enviar mensaje según servicio
-                if servicio.get_tipo() == Servicio.Tipo.REGISTRO:
-                    msg = f"driver|REGISTRO|{cliente.getID()}" 
-                    print("[DRV]: ", msg)
-                    send(sock, msg)
-                    resp = recv(sock)
-                    print("[CENTRAL]: ", resp)
 
-                elif servicio.get_tipo() == Servicio.Tipo.AUTORIZACION:
-                    cp_id = input("Introduce el ID del CP: ").strip()
-                    if not cp_id:
-                        print("CP_ID vacío, cancelo solicitud.")
-                        continue
-                    msg = f"driver|AUTORIZACION|{cliente.getID()}|{cp_id}" 
-                    print("[DRV] ", msg)
-                    send(sock, msg)
-                    resp = recv(sock)
-                    print("[CENTRAL] ", resp)
+        producer.send(TOPIC_REQUESTS, msg)
+        producer.flush()
+        print(f"[DRIVER] Enviado: {msg}")
 
-                else:
-                    cp_id = input("Introduce el ID del CP: ").strip()
-                    if not cp_id:
-                        print("CP_ID vacío, cancelo consulta.")
-                        continue
-                    msg = f"driver|ESTADO|{cp_id}" 
-                    print("[DRV] ", msg)
-                    send(sock, msg)
-                    resp = recv(sock)
-                    print("[CENTRAL] ", resp)
-            
-            except ValueError:
-                print("Opción inválida. Usa 0, 1, 2 o 3.")
-                continue
+        # Pausa exigida por la práctica
+        time.sleep(DELAYS)
 
-            # Espera obligatoria tras cada respuesta (éxito o error)
-            time.sleep(DELAYS)
+    producer.close()
 
-########## MAIN ##########
+
+def receiveAnswers(bootstrap_server, driver):
+    """
+    --- Kafka Consumer: para recibir respuestas de la central ---
+    Se asume que la central publica strings con formato: 'RESPUESTA|<DRIVER_ID>|<MENSAJE>'
+    Este consumidor muestra SOLO las respuestas destinadas a este driver.
+    """
+    consumer = KafkaConsumer(
+        TOPIC_ANSWERS,
+        bootstrap_servers=[bootstrap_server],
+        value_deserializer=lambda m: m.decode(FORMAT),  # bytes -> string
+        auto_offset_reset="latest",
+        enable_auto_commit=True,
+        group_id=f"driver-{driver.getId()}",
+    )
+
+    print(f"[DRIVER] Escuchando respuestas en '{TOPIC_ANSWERS}'…")
+    for msg in consumer:
+        text = msg.value or ""
+        parts = text.split("|", 2)  # ['RESPUESTA', '<DRIVER_ID>', '<MENSAJE>']
+        if len(parts) < 2:
+            # Formato inesperado; lo mostramos tal cual por depuración
+            print(f"[CENTRAL] (formato desconocido) {text}")
+            continue
+
+        # Filtramos por driver_id si viene en la posición 1
+        resp_driver_id = parts[1] if len(parts) >= 2 else ""
+        if resp_driver_id == driver.getId():
+            mensaje = parts[2] if len(parts) >= 3 else ""
+            print(f"[CENTRAL --> {driver.getId()}]: {mensaje}")
 
 
 def main():
     print("****** EV_Driver ******")
+    # Uso: python EV_Driver.py <BrokerIP:Puerto> <DriverID>
     if len(sys.argv) < 3:
-        print("Uso: python EV_Driver.py <ServerIP> <Puerto> <DriverID>")
+        print("Uso: python EV_Driver.py <BrokerIP:Puerto> <DriverID>")
         return
 
-    server_ip = sys.argv[1]
-    port = int(sys.argv[2])
-    driver = Cliente(sys.argv[3]) # creamos el cliente con la id que recibimos por parametro
+    bootstrap_server = sys.argv[1]   # ej: localhost:9092
+    driver_id = sys.argv[2]
+    driver = Cliente(driver_id)      # tu clase existente
 
-    addr = (server_ip, port)
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect(addr)
-    print(f"[EV_Driver] Conectado a CENTRAL en {addr}")
-    
-    SelectServices(sock, driver)
+    # Hilo para respuestas, si la central las publica
+    t = threading.Thread(target=receiveAnswers, args=(bootstrap_server, driver), daemon=True)
+    t.start()
 
-    print("Cerrando sesión…")
-    send(sock, FIN)
-    sock.close()
+    # Envío de peticiones
+    sendRequests(bootstrap_server, driver)
+
+    print("Cerrando Driver…")
+    time.sleep(1)
+
 
 if __name__ == "__main__":
     main()
+    
