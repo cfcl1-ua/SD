@@ -1,5 +1,8 @@
 import socket 
 import threading
+from confluent_kafka import Consumer, KafkaException, KafkaError
+from pymongo import MongoClient
+from json import loads
 
 
 HEADER = 64
@@ -8,86 +11,73 @@ SERVER = socket.gethostbyname(socket.gethostname())
 ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 FIN = "FIN"
-MAX_CONEXIONES = 2
+MAX_CONEXIONES = 3
 
-def handle_client(conn, addr):
+consumer_config = {
+    'bootstrap.servers': 'localhost:9092',   # Kafka broker
+    'group.id': 'my-group',                   # Consumer group id
+    'auto.offset.reset': 'earliest',          # Start reading at the earliest offset
+    'enable.auto.commit': True                # Enable auto-commit of offsets
+}
+
+def handle_client(conn, addr, connected):
     print(f"[NUEVA CONEXION] {addr} connected.")
 
-    connected = True
-    while connected:
+    while True:
         msg_length = conn.recv(HEADER).decode(FORMAT)
         if msg_length:
             msg_length = int(msg_length)
             msg = conn.recv(msg_length).decode(FORMAT)
-            if msg == FIN:
-                connected = False
-            print(f" He recibido del cliente [{addr}] el mensaje: {msg}")
-            print(f"Que hacer ahora? ok or ko")
-            msg=input()
-            conn.send(f"msg".encode(FORMAT))
-    print("ADIOS. TE ESPERO EN OTRA OCASION")
+            if msg == "ok":
+                if connected == True:
+                    print("h")
+                    msg="ok"
+                    conn.send(f"msg".encode(FORMAT))
+                else:
+                    msg=0
+                    conn.send(f"msg".encode(FORMAT))
+                    break
+    print("Se rompio la conexion")
     conn.close()
     
+class Engine:
+    def __init__(self, SERVER, PORT_SERVER):
+        self.SERVER = SERVER
+        self.PORT_SERVER = PORT_SERVER
+        self.HOST = 'localhost'
+        self.PORT = 5050
+        self.ADDR = (self.HOST, self.PORT)
+        self.ADDR_SERVER = (SERVER, PORT_SERVER)
+        self.connected = True
         
-
-def start():
-    server.listen()
-    print(f"[LISTENING] Servidor a la escucha en {SERVER}")
-    CONEX_ACTIVAS = threading.active_count()-1
-    print(CONEX_ACTIVAS)
-    while True:
-        conn, addr = server.accept()
-        CONEX_ACTIVAS = threading.active_count()
-        if (CONEX_ACTIVAS <= MAX_CONEXIONES): 
-            thread = threading.Thread(target=handle_client, args=(conn, addr))
-            thread.start()
-            print(f"[CONEXIONES ACTIVAS] {CONEX_ACTIVAS}")
-            print("CONEXIONES RESTANTES PARA CERRAR EL SERVICIO", MAX_CONEXIONES-CONEX_ACTIVAS)
-        else:
-            print("OOppsss... DEMASIADAS CONEXIONES. ESPERANDO A QUE ALGUIEN SE VAYA")
-            conn.send("OOppsss... DEMASIADAS CONEXIONES. Tendrás que esperar a que alguien se vaya".encode(FORMAT))
-            conn.close()
-            CONEX_ACTUALES = threading.active_count()-1
+        consumer = Consumer(consumer_config)
+        # Subscribe to the 'numtest' topic
+        consumer.subscribe(['numtest'])
         
-
-def conectar_central(addr, id_cp):
-    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client.connect(addr)
+    def estado(self):
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.bind(self.ADDR)
+        server.listen()
+        print(f"[LISTENING] Servidor a la escucha en {SERVER}")
+        CONEX_ACTIVAS = threading.active_count()-1
+        print(CONEX_ACTIVAS)
+        while True:
+            conn, addr = server.accept()
+            CONEX_ACTIVAS = threading.active_count()
+            if (CONEX_ACTIVAS <= MAX_CONEXIONES): 
+                thread = threading.Thread(target=handle_client, args=(conn, addr, self.connected))
+                thread.start()
+                print(f"[CONEXIONES ACTIVAS] {CONEX_ACTIVAS}")
+                print("CONEXIONES RESTANTES PARA CERRAR EL SERVICIO", MAX_CONEXIONES-CONEX_ACTIVAS)
+            else:
+                print("OOppsss... DEMASIADAS CONEXIONES. ESPERANDO A QUE ALGUIEN SE VAYA")
+                conn.send("OOppsss... DEMASIADAS CONEXIONES. Tendrás que esperar a que alguien se vaya".encode(FORMAT))
+                conn.close()
+                CONEX_ACTUALES = threading.active_count()-1
     
-    msg=f"engine|ok|{ID}"
-    send(msg, client)
-    
-    response=client.recv(2048).decode(FORMAT)
-    #mensaje de confirmacion de central
-    if response == "Server y engine conectados":
-        print(f"Autentificacion correcta")
+    def boton_ko(self):
+        self.connected = False
         
-    else:
-        print(f"Error al conectar con central")
-        cliente.close()
-        return None
     
-    return client
-    
-
-######################### MAIN ##########################
-
-def main():
-    SERVER = sys.argv[1]
-    PORT = int(sys.argv[2])
-    IP_CP=sys.argv[3]
-    '''
-    ip_broker=sys.argv[4]
-    port_broker=sys.argv[5]
-    '''
-    ADDR = (SERVER, PORT)
-    conectar_central(ADDR, IP_CP)
-    
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind(ADDR)
-
-    print("[STARTING] Servidor inicializándose...")
-'''
-    start()
-'''
-if __name__=="__main__": main()
+        
+        
