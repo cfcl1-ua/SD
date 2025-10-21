@@ -1,11 +1,11 @@
-import socket 
+from kafka import KafkaProducer, KafkaConsumer
 import threading
 import sys
 from ChargingPoint import ChargingPoint
 
 HEADER = 64
 PORT = 5050
-SERVER = "172.21.42.4" # Poner la ip del pc 
+SERVER = "172.20.243.98" # Poner la ip del pc 
 ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 FIN = "FIN"
@@ -15,6 +15,7 @@ CPS_FILE = "Cps.txt"
 CPs = []
 CPs_IDX = []
 CUSTOMER_IDX = []
+TOPIC_REQUESTS = "driver-to-central"
 
 def handle_client(conn, addr):
     print(f"[NUEVA CONEXION] {addr} connected.")
@@ -168,13 +169,55 @@ def cargarCPs(fich: str):
                 cps.append(ChargingPoint(cp_id, location))
     return cps
 
+######################### KAFKA ##########################
+
+def create_consumer(bootstrap):
+    try:
+        consumer = KafkaConsumer(
+            TOPIC_REQUESTS,
+            bootstrap_servers=[bootstrap],
+            value_deserializer=lambda m: m.decode(FORMAT),
+            auto_offset_reset="earliest",
+            enable_auto_commit=True,
+            group_id="central-group",
+            client_id="central-1",
+        )
+        print(f"[CENTRAL] Conectado a {bootstrap}, escuchando '{TOPIC_REQUESTS}'…")
+        return consumer
+    except Exception as e:
+        print(f"[CENTRAL] No puedo conectar con el broker '{bootstrap}': {e}")
+        print("→ Verifica que Kafka está arrancado, el puerto es 9092 y advertised.listeners es accesible.")
+        raise
+
+def receive_messages(consumer):
+    for msg in consumer:
+        text = msg.value or ""
+        parts = text.split("|")
+        tipo = parts[0].upper() if len(parts) > 0 else ""
+        driver_id = parts[1] if len(parts) > 1 else ""
+        cp_id = parts[2] if len(parts) > 2 else None
+
+        if tipo == FIN:
+            print(f"[CENTRAL] Driver {driver_id} cerró sesión.")
+            continue
+
+        print(f"[CENTRAL] Recibido: {text}")
+        print(f"  → Tipo: {tipo}, Driver: {driver_id}, CP: {cp_id}")
+        # handle_request(tipo, driver_id, cp_id)
 
 ######################### MAIN ##########################
 
 def main():
+    
+    print("****** EV_Central ******")
+    bootstrap = sys.argv[1] if len(sys.argv) > 1 else "localhost:9092"
+    consumer = create_consumer(bootstrap)
+    receive_messages(consumer)
+    
+    '''
     fich = sys.argv[1] if len(sys.argv) > 1 else CPS_FILE
     CPs = cargarCPs(fich)
-
+    
     for p in CPs:
         CPs.append(p)
         CPs_IDX.append(p.getId())
@@ -186,7 +229,7 @@ def main():
 
     print("[STARTING] Servidor inicializándose...")
     start(server)
-    
+    '''
     
 
 if __name__=="__main__": main()
