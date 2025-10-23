@@ -77,14 +77,15 @@ if __name__ == "__main__":
     hilo_supervision = threading.Thread(target=Punto.Monitor.estado)
     
     hilo_trabajo.start()
-    time.sleep(2)
+    time.sleep(3)
     hilo_supervision.start()
     
-    time.sleep(10)
+    time.sleep(5)
     print("d")
     Punto.Engine.boton_ko()
     
-    hilo_trabajo.join()
-    hilo_supervision.join()
+    hilo_supervision.join(timeout=5)
+    hilo_trabajo.join(timeout=5)
+    
     
     print("finish")

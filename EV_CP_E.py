@@ -12,14 +12,14 @@ ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 FIN = "FIN"
 MAX_CONEXIONES = 3
-
+'''
 consumer_config = {
     'bootstrap.servers': 'localhost:9092',   # Kafka broker
     'group.id': 'my-group',                   # Consumer group id
     'auto.offset.reset': 'earliest',          # Start reading at the earliest offset
     'enable.auto.commit': True                # Enable auto-commit of offsets
 }
-
+'''
 def handle_client(conn, addr, connected):
     print(f"[NUEVA CONEXION] {addr} connected.")
 
@@ -31,11 +31,9 @@ def handle_client(conn, addr, connected):
             if msg == "ok":
                 if connected == True:
                     print("h")
-                    msg="ok"
-                    conn.send(f"msg".encode(FORMAT))
+                    conn.send("1".encode(FORMAT))
                 else:
-                    msg=0
-                    conn.send(f"msg".encode(FORMAT))
+                    conn.send("0".encode(FORMAT))
                     break
     print("Se rompio la conexion")
     conn.close()
@@ -50,9 +48,9 @@ class Engine:
         self.ADDR_SERVER = (SERVER, PORT_SERVER)
         self.connected = True
         
-        consumer = Consumer(consumer_config)
+       # consumer = Consumer(consumer_config)
         # Subscribe to the 'numtest' topic
-        consumer.subscribe(['numtest'])
+        #consumer.subscribe(['numtest'])
         
     def estado(self):
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -61,7 +59,8 @@ class Engine:
         print(f"[LISTENING] Servidor a la escucha en {SERVER}")
         CONEX_ACTIVAS = threading.active_count()-1
         print(CONEX_ACTIVAS)
-        while True:
+        while self.connected:
+            server.settimeout(10.0)
             conn, addr = server.accept()
             CONEX_ACTIVAS = threading.active_count()
             if (CONEX_ACTIVAS <= MAX_CONEXIONES): 

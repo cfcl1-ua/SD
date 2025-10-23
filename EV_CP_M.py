@@ -56,13 +56,12 @@ class Monitor:
           try:
               msg_stat="ok"
               send(msg_stat, client_engine)
-              print("c")
-              print("Recibo del Servidor: ", client_engine.recv(2048).decode(FORMAT))
               status=client_engine.recv(2048).decode(FORMAT)
+              print("Recibo del Servidor: ", status)
               time.sleep(1)
-              print("c")
+              print("m")
                 #si el server te dice que ko
-              if(int(status)== 0):
+              if(status == "0"):
                   msg_stat="ko"
                    # send(msg_stat, client)
                   print("Averia reportada")
