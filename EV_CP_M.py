@@ -59,7 +59,6 @@ class Monitor:
               status=client_engine.recv(2048).decode(FORMAT)
               print("Recibo del Servidor: ", status)
               time.sleep(1)
-              print("m")
                 #si el server te dice que ko
               if(status == "0"):
                   msg_stat="ko"

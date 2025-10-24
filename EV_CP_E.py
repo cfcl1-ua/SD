@@ -29,8 +29,7 @@ def handle_client(conn, addr, connected):
             msg_length = int(msg_length)
             msg = conn.recv(msg_length).decode(FORMAT)
             if msg == "ok":
-                if connected == True:
-                    print("h")
+                if connected.is_set():
                     conn.send("1".encode(FORMAT))
                 else:
                     conn.send("0".encode(FORMAT))
@@ -59,15 +58,23 @@ class Engine:
         print(f"[LISTENING] Servidor a la escucha en {SERVER}")
         CONEX_ACTIVAS = threading.active_count()-1
         print(CONEX_ACTIVAS)
-        while self.connected:
-            server.settimeout(10.0)
-            conn, addr = server.accept()
+        self.connected=threading.Event() #lo pongo como evento para que todos los hilos puedan ver el cambio
+        self.connected.set()
+        server.settimeout(10.0)
+        while True:
+            try:
+                conn, addr = server.accept()
+            except TimeoutError:
+                continue
+            except Exception as e:
+                print(f"[ERROR] {e}")
+                continue
+            
             CONEX_ACTIVAS = threading.active_count()
             if (CONEX_ACTIVAS <= MAX_CONEXIONES): 
                 thread = threading.Thread(target=handle_client, args=(conn, addr, self.connected))
                 thread.start()
-                print(f"[CONEXIONES ACTIVAS] {CONEX_ACTIVAS}")
-                print("CONEXIONES RESTANTES PARA CERRAR EL SERVICIO", MAX_CONEXIONES-CONEX_ACTIVAS)
+                print("Se ha conectado con el monitor")
             else:
                 print("OOppsss... DEMASIADAS CONEXIONES. ESPERANDO A QUE ALGUIEN SE VAYA")
                 conn.send("OOppsss... DEMASIADAS CONEXIONES. Tendrás que esperar a que alguien se vaya".encode(FORMAT))
@@ -75,7 +82,7 @@ class Engine:
                 CONEX_ACTUALES = threading.active_count()-1
     
     def boton_ko(self):
-        self.connected = False
+        self.connected.clear()
         
     
         
