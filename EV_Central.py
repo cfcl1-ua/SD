@@ -1,3 +1,4 @@
+import socket
 from kafka import KafkaProducer, KafkaConsumer
 import threading
 import sys
@@ -5,7 +6,7 @@ from ChargingPoint import ChargingPoint
 
 HEADER = 64
 PORT = 5050
-SERVER = "172.20.243.98" # Poner la ip del pc 
+SERVER = "172.21.42.16" # Poner la ip del pc 
 ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 FIN = "FIN"
@@ -13,6 +14,7 @@ MAX_CONEXIONES = 2
 CLIENTES_FILE = "Clientes.txt"
 CPS_FILE = "Cps.txt"
 CPs = []
+CPs_AUX = []
 CPs_IDX = []
 CUSTOMER_IDX = []
 TOPIC_REQUESTS = "driver-to-central"
@@ -33,12 +35,15 @@ def handle_client(conn, addr):
                 if parts[0] == "driver":
                     # El mensaje viene de un driver
                     resp = attendToDriver(parts[1], parts[2]) # peticion, cliente
+                elif parts[0] == "monitor":
+                    conectado = "1"
+                    conn.send(conectado.encode(FORMAT))
+                    resp = "OK: atendiendo peticiones del monitor" # LLAMAR A LA FUNCION attendToMonitor
                 else:
-                    # Otro tipo de mensaje o formato
-                    resp = f"Mensaje de origen no reconocido: {msg}"
-
+                    resp = "ERROR: peticion de origen desconocido"
             print(f" He recibido del cliente [{addr}] el mensaje: {msg}")
-            conn.send(f"HOLA CLIENTE: He recibido tu mensaje: {msg} ".encode(FORMAT))
+            #conn.send(f"HOLA CLIENTE: He recibido tu mensaje: {msg} ".encode(FORMAT))
+            conn.send(resp.encode(FORMAT))
     print("ADIOS. TE ESPERO EN OTRA OCASION")
     conn.close()
     
@@ -209,16 +214,16 @@ def receive_messages(consumer):
 
 def main():
     
+    '''
     print("****** EV_Central ******")
     bootstrap = sys.argv[1] if len(sys.argv) > 1 else "localhost:9092"
     consumer = create_consumer(bootstrap)
     receive_messages(consumer)
-    
     '''
     fich = sys.argv[1] if len(sys.argv) > 1 else CPS_FILE
-    CPs = cargarCPs(fich)
+    CPs_AUX = cargarCPs(fich)
     
-    for p in CPs:
+    for p in CPs_AUX:
         CPs.append(p)
         CPs_IDX.append(p.getId())
         print(p.get_info()) 
@@ -229,7 +234,5 @@ def main():
 
     print("[STARTING] Servidor inicializándose...")
     start(server)
-    '''
-    
 
 if __name__=="__main__": main()
