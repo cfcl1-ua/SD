@@ -6,7 +6,7 @@ from json import loads
 
 
 HEADER = 64
-PORT = 5050
+PORT = 8080
 SERVER = socket.gethostbyname(socket.gethostname())
 ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
@@ -42,7 +42,7 @@ class Engine:
         self.SERVER = SERVER
         self.PORT_SERVER = PORT_SERVER
         self.HOST = 'localhost'
-        self.PORT = 5050
+        self.PORT = 8080
         self.ADDR = (self.HOST, self.PORT)
         self.ADDR_SERVER = (SERVER, PORT_SERVER)
         self.connected = True
@@ -84,6 +84,20 @@ class Engine:
     def boton_ko(self):
         self.connected.clear()
         
+    def opciones(self, opc):
+        match int(opc):
+            case 3: self.boton_ko()
+            
+    def menu(self):
+        print("<<MENU CHARGING POINT>>")
+        print("Elige una de las opciones:")
+        print("1. Usar Manualmente")
+        print("2. Usar la aplicacion")
+        print("3. Boton KO")
+        opc=input()
+        self.opciones(opc)
     
+            
+                
         
         

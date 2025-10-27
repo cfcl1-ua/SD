@@ -4,10 +4,10 @@ import threading
 import time
 from confluent_kafka import Consumer, KafkaException, KafkaError
 
-IP='localhost'
-PORT=6006
+IP='172.21.42.16'
+PORT=5050
 IP_ENGINE='localhost'
-PORT_ENGINE=5050
+PORT_ENGINE=8080
 IP_BROKER='localhost'
 PORT_BROKER=5643
 
@@ -23,7 +23,7 @@ class ChargingPoint:
         self.active = False        # Si el punto está encendido o no
         self.supplying = False     # Si está suministrando energía
         self.status = "OFFLINE"    # OFFLINE, IDLE, CHARGING, ERROR
-        self.Monitor=Monitor(IP, PORT, IP_ENGINE, PORT_ENGINE, cp_id)
+        self.Monitor=Monitor(IP, PORT, IP_ENGINE, PORT_ENGINE, cp_id, location)
         self.Engine=Engine(IP_BROKER, PORT_BROKER)
 
     # --- Estados básicos ---
@@ -67,6 +67,7 @@ class ChargingPoint:
     
     def getStatus(self):
         return self.status
+    
 
     def __repr__(self):
         return f"<ChargingPoint id={self.id} status={self.status} active={self.active}>"
@@ -76,16 +77,22 @@ if __name__ == "__main__":
     hilo_trabajo = threading.Thread(target=Punto.Engine.estado)
     hilo_supervision = threading.Thread(target=Punto.Monitor.estado)
     
-    hilo_trabajo.start()
-    time.sleep(3)
-    hilo_supervision.start()
-    
-    time.sleep(5)
-    print("d")
-    Punto.Engine.boton_ko()
-    
-    hilo_supervision.join(timeout=5)
-    hilo_trabajo.join(timeout=5)
-    
-    
-    print("finish")
+    activo=Punto.Monitor.conectar_central()
+    if activo:
+        Punto.active=True
+        Punto.status = "IDLE"    # OFFLINE, IDLE, CHARGING, ERROR
+
+        hilo_trabajo.start()
+        time.sleep(3)
+        hilo_supervision.start()
+        time.sleep(2)
+        
+        Punto.Engine.menu()
+        
+        hilo_supervision.join()
+        hilo_trabajo.join()
+        
+        
+        print("finish")
+    else:
+        print("error")
