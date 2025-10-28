@@ -21,7 +21,7 @@ consumer_config = {
 }
 '''
 def handle_client(conn, addr, connected, status):
-    print(f"[NUEVA CONEXION] {addr} connected.")
+    print(f"MONITOR connected.")
 
     while True:
         msg_length = conn.recv(HEADER).decode(FORMAT)
@@ -29,12 +29,15 @@ def handle_client(conn, addr, connected, status):
             msg_length = int(msg_length)
             msg = conn.recv(msg_length).decode(FORMAT)
             if msg == "ok":
-                if connected.is_set():
-                    conn.send("ENGINE|{status}".encode(FORMAT))
+                #Te envio mensaje de estado si connected es true
+                print(self.status)
+                if self.status!="ERROR":
+                    conn.send(f"ENGINE|{status}".encode(FORMAT))
                 else:
-                    status="ERROR"
-                    conn.send("ENGINE|{status}".encode(FORMAT))
+                    self.status="ERROR"
+                    conn.send(f"ENGINE|{status}".encode(FORMAT))
                     break
+                
     print("Se rompio la conexion")
     conn.close()
     
@@ -62,6 +65,7 @@ class Engine:
         print(CONEX_ACTIVAS)
         self.connected=threading.Event() #lo pongo como evento para que todos los hilos puedan ver el cambio
         self.connected.set()
+        print(self.connected)
         server.settimeout(10.0)
         while True:
             try:
@@ -74,7 +78,7 @@ class Engine:
             
             CONEX_ACTIVAS = threading.active_count()
             if (CONEX_ACTIVAS <= MAX_CONEXIONES): 
-                thread = threading.Thread(target=handle_client, args=(conn, addr, self.connected, self.status))
+                thread = threading.Thread(target=handle_client, args=(conn, addr, self.connected))
                 thread.start()
                 print("Se ha conectado con el monitor")
             else:
@@ -85,7 +89,6 @@ class Engine:
     
     def boton_ko(self):
         self.status="ERROR"
-        self.connected.clear()
         
     def menu_manual(self):
         #preguntar comohacerlo manualmente
@@ -95,6 +98,8 @@ class Engine:
     
     def enchufar(self):
         self.status="CHARGING"
+        
+        
     def opciones(self, opc):
         match int(opc):
             case 1: self.enchufar()
@@ -111,8 +116,14 @@ class Engine:
         print("3. Boton KO")
         opc=input()
         self.opciones(opc)
+ 
+def main():
+    monitor= Engine('localhost', 5643)
+    monitor.estado()
+ 
+if __name__ == "__main__" : main()
     
+
             
-                
         
         

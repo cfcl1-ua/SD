@@ -28,29 +28,29 @@ class Monitor:
         self.LOC=LOC
         self.addr=(SERVER, PORT)
         self.addr_engine=(ENGINE, ENGINE_PORT)
-        
+        self.sock=None
         
     #conecta con central
-    def conectar_central(self): 
-        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client.connect(self.addr)
+    def conectar_central(self):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.connect(self.addr)
         
         msg=f"monitor|PETICION|{self.ID}|IDLE"
-        send(msg, client)
+        send(msg, self.sock)
         
-        response=client.recv(2048).decode(FORMAT)
+        response=self.sock.recv(2048).decode(FORMAT)
         #mensaje de confirmacion de central
-        print(response)
         if int(response) == 1:
             print("conectado con central")
             
             #respuesta 
-            msg_length=client.recv(HEADER).decode(FORMAT)
-            
+            msg_length=self.sock.recv(HEADER).decode(FORMAT)
             #El CP se registra a la base de datos o ya esta registrado
             if msg_length == "DESCONOCIDO":
                 msg=f"monitor|AUTENTIFICACION|{self.ID}|{self.LOC}"
-                send(msg, client)
+                send(msg, self.sock)
+                status=self.sock.recv(2048).decode(FORMAT)
+                print(status)
                 return True
             elif msg_length=="REGISTRADO":
                 return True
@@ -64,8 +64,6 @@ class Monitor:
         
     #verifica el estado de engine
     def estado(self):  #cliente
-        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client.connect(self.addr)
         client_engine= socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client_engine.connect(self.addr_engine)
         print (f"Conexion establecida con engine")
@@ -76,10 +74,10 @@ class Monitor:
               status=client_engine.recv(2048).decode(FORMAT)
               time.sleep(1)
               
-                #el engine activa el boton KO o no funciona 
+              #el engine activa el boton KO o no funciona
               if(status == "ENGINE|ERROR"):
                   msg_stat=f"monitor|ESTADO|{self.ID}|ERROR"
-                  send(msg_stat, client)
+                  send(msg_stat, self.sock)
                   
                   print("Averia reportada")
                   break
@@ -87,13 +85,16 @@ class Monitor:
                 #El engine funciona perfectamente
               elif (status=="ENGINE|CHARGING"):
                   msg_stat=f"monitor|ESTADO|{self.ID}|CHARGING"
-                  send(msg_stat, client)
+                  send(msg_stat, self.sock)
+              else:
+                  msg_stat=f"monitor|ESTADO|{self.ID}|IDLE"
+                  send(msg_stat, self.sock)
              
           #excepciones          
           except BrokenPipeError:
               print(f"se perdio la conexion")
               msg_stat=f"monitor|ESTADO|{self.ID}|ERROR"
-              send(msg_stat, client)
+              send(msg_stat, self.sock)
               print("Averia reportada a central")
               break
             
