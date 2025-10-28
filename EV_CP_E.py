@@ -47,9 +47,9 @@ class Engine:
         self.ADDR_SERVER = (SERVER, PORT_SERVER)
         self.connected = True
         
-       # consumer = Consumer(consumer_config)
+        consumer = Consumer(consumer_config)
         # Subscribe to the 'numtest' topic
-        #consumer.subscribe(['numtest'])
+        consumer.subscribe(['numtest'])
         
     def estado(self):
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -84,15 +84,24 @@ class Engine:
     def boton_ko(self):
         self.connected.clear()
         
+    def menu_manual(self):
+        #preguntar comohacerlo manualmente
+        print("<<MENU MANUAL>>")
+        print("ID del driver:")
+        input()
+    '''    
     def opciones(self, opc):
         match int(opc):
             case 3: self.boton_ko()
-            
+    '''        
     def menu(self):
         print("<<MENU CHARGING POINT>>")
         print("Elige una de las opciones:")
+        #Se introduce la id del driver para realizar las funciones
         print("1. Usar Manualmente")
+        #Aqui espera las peticiones del driver mediante broker
         print("2. Usar la aplicacion")
+        #boton para parar el engine
         print("3. Boton KO")
         opc=input()
         self.opciones(opc)

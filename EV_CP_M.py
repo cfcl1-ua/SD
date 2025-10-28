@@ -19,7 +19,7 @@ def send(msg, client_socket):
 #clase monitor
 class Monitor:
     #variables de entrada
-    def __init__(self, SERVER, PORT, ENGINE, ENGINE_PORT, ID. LOC):
+    def __init__(self, SERVER, PORT, ENGINE, ENGINE_PORT, ID, LOC):
         self.SERVER = SERVER
         self.PORT = PORT
         self.ENGINE = ENGINE
@@ -35,29 +35,35 @@ class Monitor:
         client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client.connect(self.addr)
         
-        msg=f"monitor|IDLE|{self.ID}"
+        msg=f"monitor|PETICION|{self.ID}|IDLE"
         send(msg, client)
         
         response=client.recv(2048).decode(FORMAT)
         #mensaje de confirmacion de central
         print(response)
         if int(response) == 1:
-            print(f"Autentificacion correcta")
+            print("conectado con central")
+            
+            #respuesta 
             response=client.recv(HEADER).decode(FORMAT)
             msg_length = int(msg_length)
             msg_received = conn.recv(msg_length).decode(FORMAT)
-            if msg_received == "Patata":
+            
+            #El CP se registra a la base de datos o ya esta registrado
+            if msg_received == "DESCONOCIDO":
                 msg=f"monitor|AUTENTIFICACION|{self.ID}|{self.LOC}"
                 send(msg, client)
                 return True
-            elif msg_received=="naranja":
+            elif msg_received=="REGISTRADO":
                 return True
             else:
                 return False
+            
         else:
             print(f"Error al conectar con central")
             client.close()
             return False
+        
     #verifica el estado de engine
     def estado(self):  #cliente
         client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -71,25 +77,21 @@ class Monitor:
               send(msg_stat, client_engine)
               status=client_engine.recv(2048).decode(FORMAT)
               time.sleep(1)
-                #si el server te dice que ko
+              
+                #el engine activa el boton KO o no funciona 
               if(status == "0"):
-                   # send(msg_stat, client)
                   msg_stat=f"monitor|ERROR|{self.ID}"
                   send(msg_stat, client)
                   print("Averia reportada")
                   time.sleep(2)
                   client.close()
                   break
+                
+                #El engine funciona perfectamente
               else:
                   msg_stat=f"monitor|IDLE|{self.ID}"
                   send(msg_stat, client)
-                    
-          except BrokenPipeError:
-              print(f"se perdio la conexion")
-              msg_stat=f"monitor|ERROR|{self.ID}"
-              send(msg_stat, client)
-              print("Averia reportada a central")
-              break
+          #excepciones          
           except BrokenPipeError:
               print(f"se perdio la conexion")
               msg_stat=f"monitor|ERROR|{self.ID}"

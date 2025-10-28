@@ -4,7 +4,7 @@ import threading
 import time
 from confluent_kafka import Consumer, KafkaException, KafkaError
 
-IP='172.21.42.16'
+IP='172.21.42.19'
 PORT=5050
 IP_ENGINE='localhost'
 PORT_ENGINE=8080
