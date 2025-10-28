@@ -20,7 +20,7 @@ consumer_config = {
     'enable.auto.commit': True                # Enable auto-commit of offsets
 }
 '''
-def handle_client(conn, addr, connected):
+def handle_client(conn, addr, connected, status):
     print(f"[NUEVA CONEXION] {addr} connected.")
 
     while True:
@@ -30,9 +30,10 @@ def handle_client(conn, addr, connected):
             msg = conn.recv(msg_length).decode(FORMAT)
             if msg == "ok":
                 if connected.is_set():
-                    conn.send("1".encode(FORMAT))
+                    conn.send("ENGINE|{status}".encode(FORMAT))
                 else:
-                    conn.send("0".encode(FORMAT))
+                    status="ERROR"
+                    conn.send("ENGINE|{status}".encode(FORMAT))
                     break
     print("Se rompio la conexion")
     conn.close()
@@ -42,14 +43,15 @@ class Engine:
         self.SERVER = SERVER
         self.PORT_SERVER = PORT_SERVER
         self.HOST = 'localhost'
-        self.PORT = 8080
+        self.PORT = PORT
         self.ADDR = (self.HOST, self.PORT)
         self.ADDR_SERVER = (SERVER, PORT_SERVER)
-        self.connected = True
-        
-        consumer = Consumer(consumer_config)
+        self.connected = False
+        self.status = "IDLE"    # OFFLINE, IDLE, CHARGING, ERROR
+
+        #consumer = Consumer(consumer_config)
         # Subscribe to the 'numtest' topic
-        consumer.subscribe(['numtest'])
+        #consumer.subscribe(['numtest'])
         
     def estado(self):
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -72,7 +74,7 @@ class Engine:
             
             CONEX_ACTIVAS = threading.active_count()
             if (CONEX_ACTIVAS <= MAX_CONEXIONES): 
-                thread = threading.Thread(target=handle_client, args=(conn, addr, self.connected))
+                thread = threading.Thread(target=handle_client, args=(conn, addr, self.connected, self.status))
                 thread.start()
                 print("Se ha conectado con el monitor")
             else:
@@ -89,11 +91,14 @@ class Engine:
         print("<<MENU MANUAL>>")
         print("ID del driver:")
         input()
-    '''    
+    
+    def enchufar(self):
+        
     def opciones(self, opc):
         match int(opc):
+            case 1: self.enchufar()
             case 3: self.boton_ko()
-    '''        
+            
     def menu(self):
         print("<<MENU CHARGING POINT>>")
         print("Elige una de las opciones:")

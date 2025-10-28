@@ -45,16 +45,14 @@ class Monitor:
             print("conectado con central")
             
             #respuesta 
-            response=client.recv(HEADER).decode(FORMAT)
-            msg_length = int(msg_length)
-            msg_received = conn.recv(msg_length).decode(FORMAT)
+            msg_length=client.recv(HEADER).decode(FORMAT)
             
             #El CP se registra a la base de datos o ya esta registrado
-            if msg_received == "DESCONOCIDO":
+            if msg_length == "DESCONOCIDO":
                 msg=f"monitor|AUTENTIFICACION|{self.ID}|{self.LOC}"
                 send(msg, client)
                 return True
-            elif msg_received=="REGISTRADO":
+            elif msg_length=="REGISTRADO":
                 return True
             else:
                 return False
@@ -79,22 +77,21 @@ class Monitor:
               time.sleep(1)
               
                 #el engine activa el boton KO o no funciona 
-              if(status == "0"):
-                  msg_stat=f"monitor|ERROR|{self.ID}"
+              if(status == "ENGINE|ERROR"):
+                  msg_stat=f"monitor|ESTADO|{self.ID}|ERROR"
                   send(msg_stat, client)
+                  
                   print("Averia reportada")
-                  time.sleep(2)
-                  client.close()
                   break
                 
                 #El engine funciona perfectamente
               else:
-                  msg_stat=f"monitor|IDLE|{self.ID}"
+                  msg_stat=f"monitor|ESTADO|{self.ID}|IDLE"
                   send(msg_stat, client)
           #excepciones          
           except BrokenPipeError:
               print(f"se perdio la conexion")
-              msg_stat=f"monitor|ERROR|{self.ID}"
+              msg_stat=f"monitor|ESTADO|{self.ID}|ERROR"
               send(msg_stat, client)
               print("Averia reportada a central")
               break

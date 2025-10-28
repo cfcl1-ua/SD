@@ -79,8 +79,6 @@ if __name__ == "__main__":
     
     activo=Punto.Monitor.conectar_central()
     if activo:
-        Punto.active=True
-        Punto.status = "IDLE"    # OFFLINE, IDLE, CHARGING, ERROR
 
         hilo_trabajo.start()
         time.sleep(3)
