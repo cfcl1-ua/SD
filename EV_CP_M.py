@@ -85,9 +85,10 @@ class Monitor:
                   break
                 
                 #El engine funciona perfectamente
-              else:
-                  msg_stat=f"monitor|ESTADO|{self.ID}|IDLE"
+              elif (status=="ENGINE|CHARGING"):
+                  msg_stat=f"monitor|ESTADO|{self.ID}|CHARGING"
                   send(msg_stat, client)
+             
           #excepciones          
           except BrokenPipeError:
               print(f"se perdio la conexion")

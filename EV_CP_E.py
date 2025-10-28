@@ -84,6 +84,7 @@ class Engine:
                 CONEX_ACTUALES = threading.active_count()-1
     
     def boton_ko(self):
+        self.status="ERROR"
         self.connected.clear()
         
     def menu_manual(self):
@@ -93,7 +94,7 @@ class Engine:
         input()
     
     def enchufar(self):
-        
+        self.status="CHARGING"
     def opciones(self, opc):
         match int(opc):
             case 1: self.enchufar()
