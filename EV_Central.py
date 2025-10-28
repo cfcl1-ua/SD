@@ -35,10 +35,8 @@ def handle_client(conn, addr):
                 if parts[0] == "driver":
                     # El mensaje viene de un driver
                     resp = attendToDriver(parts[1], parts[2]) # peticion, cliente
-                elif parts[0] == "monitor":
-                    conectado = "1"
-                    conn.send(conectado.encode(FORMAT))
-                    resp = "OK: atendiendo peticiones del monitor" # LLAMAR A LA FUNCION attendToMonitor
+                elif parts[0] == "monitor":       
+                    resp = attendToMonitor(parts[1],parts[2],parts[3]) # LLAMAR A LA FUNCION attendToMonitor
                 else:
                     resp = "ERROR: peticion de origen desconocido"
             print(f" He recibido del cliente [{addr}] el mensaje: {msg}")
@@ -68,8 +66,85 @@ def start(server):
             conn.close()
             CONEX_ACTUALES = threading.active_count()-1
         
-#########################################################
+########################## MONITOR ######################
+            
+def isEmpty(x):
+    return x==None or x==""
 
+
+def updateStatusCP(id_cp, estado):
+    """
+    Actualiza el estado en Cps.txt.
+    Devuelve False si falta dato o si no se encontró el CP; True si actualiza.
+    """
+    if isEmpty(id_cp) or isEmpty(estado):
+        return False
+
+    # Leer todas las líneas
+    try:
+        with open(CPS_FILE, "r", encoding=FORMAT) as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return False
+
+    for i, line in enumerate(lines):
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) < 3:
+            continue
+        if parts[0] == id_cp:
+            parts[2] = estado.strip()
+            lines[i] = f"{parts[0]}, {parts[1]}, {parts[2]}\n"
+            break
+
+    with open(CPS_FILE, "w", encoding=FORMAT) as f:
+        f.writelines(lines)
+    return True
+
+
+def insertToCPsBD(id_cp, loc_cp, estado_cp):
+    """
+    Inserta: id_cp, loc_cp, estado_cp
+    Devuelve False si falta dato; True si escribe.
+    """
+    if isEmpty(id_cp) or isEmpty(loc_cp) or isEmpty(estado_cp):
+        return False
+
+    with open(CPS_FILE, "a", encoding=FORMAT) as f:
+        f.write(f"{id_cp.strip()}, {loc_cp.strip()}, {estado_cp.strip()}\n")
+    return True
+
+
+def attendToMonitor(peticionicion, id_cp, var):
+    """
+    peticion: 'AUTENTIFICACION' | 'ESTADO'
+    """
+    if peticion == "AUTENTIFICACION":
+        # ¿ya está en memoria?
+        if id_cp in CPs_IDX:
+            return "ERROR: Punto de recarga ya registrado"
+
+        if not insertToCPsBD(id_cp, var, "IDLE"):
+            return "ERROR: insersion no realizada por falta de datos"
+
+        CPs_IDX.append(id_cp)
+        return "Insercion realizada correctamente"
+
+    elif peticion == "ESTADO":
+        if id_cp not in CPs_IDX:
+            return "ERROR: Punto de recarga no escontrado en la BD"
+
+        if not updateStatusCP(id_cp, var):
+            return "ERROR: Actualizacion de estado no realizada"
+
+        return "OK: estado del punto de recarga actualizado"
+
+    else:
+        if id_cp in CPs_IDX:
+            return "REGISTRADO"
+        return "DESCONOCIDO"
+         
+            
+########################## DRIVER #######################
 # Tarea 2b
 def searchCP(cp_id):
     """
