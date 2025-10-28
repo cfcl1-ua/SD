@@ -6,7 +6,7 @@ from ChargingPoint import ChargingPoint
 
 HEADER = 64
 PORT = 5050
-SERVER = "172.21.42.16" # Poner la ip del pc 
+SERVER = "172.21.42.19" # Poner la ip del pc 
 ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 FIN = "FIN"
@@ -35,7 +35,9 @@ def handle_client(conn, addr):
                 if parts[0] == "driver":
                     # El mensaje viene de un driver
                     resp = attendToDriver(parts[1], parts[2]) # peticion, cliente
-                elif parts[0] == "monitor":       
+                elif parts[0] == "monitor":
+                    conectado = "1"
+                    conn.send(conectado.encode(FORMAT))
                     resp = attendToMonitor(parts[1],parts[2],parts[3]) # LLAMAR A LA FUNCION attendToMonitor
                 else:
                     resp = "ERROR: peticion de origen desconocido"
@@ -114,29 +116,29 @@ def insertToCPsBD(id_cp, loc_cp, estado_cp):
     return True
 
 
-def attendToMonitor(peticionicion, id_cp, var):
+def attendToMonitor(peticion, id_cp, var):
     """
     peticion: 'AUTENTIFICACION' | 'ESTADO'
     """
     if peticion == "AUTENTIFICACION":
         # ¿ya está en memoria?
         if id_cp in CPs_IDX:
-            return "ERROR: Punto de recarga ya registrado"
+            return "central|ERROR"
 
         if not insertToCPsBD(id_cp, var, "IDLE"):
-            return "ERROR: insersion no realizada por falta de datos"
+            return "central|ERROR"
 
         CPs_IDX.append(id_cp)
-        return "Insercion realizada correctamente"
+        return "central|OK"
 
     elif peticion == "ESTADO":
         if id_cp not in CPs_IDX:
-            return "ERROR: Punto de recarga no escontrado en la BD"
+            return "central|ERROR"
 
         if not updateStatusCP(id_cp, var):
-            return "ERROR: Actualizacion de estado no realizada"
+            return "central|ERROR"
 
-        return "OK: estado del punto de recarga actualizado"
+        return "central|OK"
 
     else:
         if id_cp in CPs_IDX:
