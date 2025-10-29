@@ -6,7 +6,7 @@ from ChargingPoint import ChargingPoint
 
 HEADER = 64
 PORT = 5050
-SERVER = "172.21.42.19" # Poner la ip del pc 
+SERVER = "172.20.243.108" # Poner la ip del pc 
 ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 FIN = "FIN"
@@ -274,28 +274,32 @@ def handle_client(conn, addr):
     print(f"[NUEVA CONEXION] {addr} connected.")
 
     connected = True
-    msg_aux = "" # Lo usamos para mostrar el mensaje del cliente una vez
+    msg_aux = ""  # Lo usamos para mostrar el mensaje del cliente una vez
     while connected:
-        msg_length = conn.recv(HEADER).decode(FORMAT)
-        if msg_length:
-            msg_length = int(msg_length)
-            msg = conn.recv(msg_length).decode(FORMAT)
-            if msg == FIN:
-                connected = False
-            else:
-                parts = msg.split("|") # split quita los separadores y convierte el mensaje en una lista 
-                if parts[0] == "monitor":       
-                    resp = attendToMonitor(parts[1],parts[2],parts[3]) # LLAMAR A LA FUNCION attendToMonitor
-                    conn.send(resp.encode(FORMAT))
+        try:
+            msg_length = conn.recv(HEADER).decode(FORMAT)
+            if msg_length:
+                msg_length = int(msg_length)
+                msg = conn.recv(msg_length).decode(FORMAT)
+                if msg == FIN:
+                    connected = False
                 else:
-                    resp = "ERROR: peticion de origen desconocido"
-            if msg != msg_aux:
-                print(f" He recibido del cliente [{addr}] el mensaje: {msg}")
-            msg = msg_aux
+                    parts = msg.split("|")  # split quita los separadores y convierte el mensaje en una lista 
+                    if parts[0] == "monitor":       
+                        resp = attendToMonitor(parts[1], parts[2], parts[3])  # LLAMAR A LA FUNCION attendToMonitor
+                        conn.send(resp.encode(FORMAT))
+                    else:
+                        resp = "ERROR: peticion de origen desconocido"
+                if msg != msg_aux:
+                    print(f" He recibido del cliente [{addr}] el mensaje: {msg}")
+                msg_aux = msg
+
+        except ConnectionResetError:
+            print(f"[{addr}] Conexión interrumpida por el cliente (WinError 10054).")
+            break  # salimos del bucle si el cliente se desconecta abruptamente
+
     print("ADIOS. TE ESPERO EN OTRA OCASION")
-    conn.close()
-    
-        
+    conn.close()    
 
 def start(server):
     server.listen()
@@ -323,6 +327,7 @@ def start(server):
 def main():
     
     print("****** EV_Central ******")
+    '''
     clientes = cargarClientes(CLIENTES_FILE)
     i = 0
     for c in clientes
@@ -334,6 +339,7 @@ def main():
     consumer = create_consumer(bootstrap)
     producer = create_producer(bootstrap)
     receive_messages(consumer, producer)
+    '''
     
     CPs_AUX = cargarCPs(CPS_FILE)
     
