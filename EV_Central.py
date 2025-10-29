@@ -18,6 +18,8 @@ CPs_AUX = []
 CPs_IDX = []
 CUSTOMER_IDX = []
 TOPIC_REQUESTS = "driver-to-central"
+<<<<<<< HEAD
+=======
 
 def handle_client(conn, addr):
     print(f"[NUEVA CONEXION] {addr} connected.")
@@ -67,6 +69,7 @@ def start(server):
             conn.send("OOppsss... DEMASIADAS CONEXIONES. Tendrás que esperar a que alguien se vaya".encode(FORMAT))
             conn.close()
             CONEX_ACTUALES = threading.active_count()-1
+>>>>>>> 69c97b67003fd51a312f77be1b12a9ae2a59969e
         
 ########################## MONITOR ######################
             
@@ -211,29 +214,6 @@ def attendToDriver(peticion, id_cliente, id_cp=None):
         else:
             return cp.getStatus() 
 
-# Tarea 2a
-def registrarCP(fich: str, nuevo_cp: ChargingPoint):
-    """
-    Registra (da de alta) un nuevo punto de recarga en el fichero.
-    - Comprueba si ya existe un CP con el mismo ID.
-    - Si no existe, lo añade al final del fichero.
-    - Devuelve True si se ha registrado correctamente, False si ya existía.
-    """
-    cps = cargarCPs(fich)
-
-    # comprobar si ya existe un CP con la misma ID
-    for cp in cps:
-        if cp.id == nuevo_cp.id:   # adapta el nombre del atributo si es distinto
-            print(f"[WARN] Ya existe un CP con ID '{nuevo_cp.id}'. No se registra.")
-            return False
-
-    # si no existe, lo añadimos al fichero
-    with open(fich, "a", encoding="utf-8") as f:
-        f.write(f"{nuevo_cp.id}, {nuevo_cp.location}\n")
-
-    print(f"[INFO] CP '{nuevo_cp.id}' registrado correctamente en {fich}.")
-    return True
-
 # Tarea 1
 def cargarCPs(fich: str):
     """
@@ -286,6 +266,56 @@ def receive_messages(consumer):
         print(f"[CENTRAL] Recibido: {text}")
         print(f"  → Tipo: {tipo}, Driver: {driver_id}, CP: {cp_id}")
         # handle_request(tipo, driver_id, cp_id)
+        
+######################### SOCKET ##########################
+        
+def handle_client(conn, addr):
+    print(f"[NUEVA CONEXION] {addr} connected.")
+
+    connected = True
+    msg_aux = "" # Lo usamos para mostrar el mensaje del cliente una vez
+    while connected:
+        msg_length = conn.recv(HEADER).decode(FORMAT)
+        if msg_length:
+            msg_length = int(msg_length)
+            msg = conn.recv(msg_length).decode(FORMAT)
+            if msg == FIN:
+                connected = False
+            else:
+                parts = msg.split("|") # split quita los separadores y convierte el mensaje en una lista 
+                if parts[0] == "monitor":       
+                    resp = attendToMonitor(parts[1],parts[2],parts[3]) # LLAMAR A LA FUNCION attendToMonitor
+                    conn.send(resp.encode(FORMAT))
+                else:
+                    resp = "ERROR: peticion de origen desconocido"
+            if msg != msg_aux:
+                print(f" He recibido del cliente [{addr}] el mensaje: {msg}")
+            msg = msg_aux
+    print("ADIOS. TE ESPERO EN OTRA OCASION")
+    conn.close()
+    
+        
+
+def start(server):
+    server.listen()
+    print(f"[LISTENING] Servidor a la escucha en {SERVER}")
+    CONEX_ACTIVAS = threading.active_count()-1
+    print(CONEX_ACTIVAS)
+    while True:
+        conn, addr = server.accept()
+        CONEX_ACTIVAS = threading.active_count()
+        if (CONEX_ACTIVAS <= MAX_CONEXIONES):
+            msg = "1"
+            conn.send(msg.encode(FORMAT)) # Enviamos un 1 para informar que nos conectamos correctamente
+            thread = threading.Thread(target=handle_client, args=(conn, addr))
+            thread.start()
+            print(f"[CONEXIONES ACTIVAS] {CONEX_ACTIVAS}")
+            print("CONEXIONES RESTANTES PARA CERRAR EL SERVICIO", MAX_CONEXIONES-CONEX_ACTIVAS)
+        else:
+            print("OOppsss... DEMASIADAS CONEXIONES. ESPERANDO A QUE ALGUIEN SE VAYA")
+            conn.send("OOppsss... DEMASIADAS CONEXIONES. Tendrás que esperar a que alguien se vaya".encode(FORMAT))
+            conn.close()
+            CONEX_ACTUALES = threading.active_count()-1
 
 ######################### MAIN ##########################
 
