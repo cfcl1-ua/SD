@@ -8,3 +8,4 @@ CP07, Centro Deportivo Municipal
 CP08, Aeropuerto Terminal 2
 CP09, Calle Mayor 45
 CP10, Polígono Industrial Oeste2, san vicente, IDLE
+2, san vicente, ERROR

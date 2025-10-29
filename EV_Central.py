@@ -17,9 +17,13 @@ CPs = []
 CPs_AUX = []
 CPs_IDX = []
 CUSTOMER_IDX = []
-TOPIC_REQUESTS = "driver-to-central"
 
-        
+# ================== TOPICS (alineados con EV_Driver) ==================
+TOPIC_DTC = "driver-to-central"       # Drivers -> Central
+TOPIC_CTD = "central-to-driver"       # Central -> Drivers
+TOPIC_ENGINE = "central-to-engine"    # Central -> Engine (si existe un Engine)
+TOPIC_REQUESTS = TOPIC_DTC            # Central escucha peticiones del driver
+   
 ########################## MONITOR ######################
             
 def isEmpty(x):
@@ -267,6 +271,29 @@ def receive_messages(consumer, producer):
         # Llama con producer para que, si hace falta, reenvíe a Engine
         attendToDriver(peticion, cp_id, driver_id, producer)
         
+def run_kafka_loop(bootstrap):
+    """Crea consumer/producer y entra al bucle Kafka (hilo dedicado)."""
+    consumer = None
+    producer = None
+    try:
+        consumer = create_consumer(bootstrap)
+        producer = create_producer(bootstrap)
+        receive_messages(consumer, producer)   # bucle bloqueante
+    except Exception as e:
+        print(f"[CENTRAL] Hilo Kafka terminado con error: {e}")
+    finally:
+        try:
+            if consumer is not None:
+                consumer.close()
+        except Exception:
+            pass
+        try:
+            if producer is not None:
+                producer.flush()
+                producer.close()
+        except Exception:
+            pass
+        
         
 ######################### SOCKET ##########################
         
@@ -327,19 +354,17 @@ def start(server):
 def main():
     
     print("****** EV_Central ******")
-    '''
+    
     clientes = cargarClientes(CLIENTES_FILE)
     i = 0
-    for c in clientes
+    for c in clientes:
         if i%2 == 0:
             CUSTOMER_IDX.append(c)
-        i++
+        i+=1
     
-    bootstrap = sys.argv[1] if len(sys.argv) > 1 else "localhost:9092"
-    consumer = create_consumer(bootstrap)
-    producer = create_producer(bootstrap)
-    receive_messages(consumer, producer)
-    '''
+    bootstrap = sys.argv[1] if len(sys.argv) > 1 else "172.20.243.108:9092"
+    t_kafka = threading.Thread(target=run_kafka_loop, args=(bootstrap,), daemon=True)
+    t_kafka.start()
     
     CPs_AUX = cargarCPs(CPS_FILE)
     
