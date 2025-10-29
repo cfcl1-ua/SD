@@ -1,182 +1,3 @@
-# -*- coding: utf-8 -*-
-
-# ====== Imports y configuración Kafka ======
-import sys
-from kafka import KafkaConsumer, KafkaProducer  # <-- faltaba el import
-
-# Tópicos
-ENGINE_TOPIC = "central-to-engine"
-DRIVER_TOPIC = "central-to-driver"
-TOPIC_REQUESTS = "driver-to-central"            # <-- definido
-
-# Codificación
-FORMAT = "utf-8"                                # <-- definido
-
-# Índices y ficheros
-CUSTOMER_IDX = []
-CPs_IDX = []
-CPS_FILE = "Cps.txt"            # fichero con CPs (ID_CP, Nombre)
-CLIENTES_FILE = "Clientes.txt"  # <-- definido (ID_DRIVER,TotalGastado)
-
-# Kafka Producer (simple)
-producer = KafkaProducer(                         # <-- añadido
-    bootstrap_servers=["localhost:9092"],
-    value_serializer=lambda s: s.encode(FORMAT),
-    linger_ms=10,
-)
-
-# ====== Envíos ======
-def sendToEngine(peticion, cp_id, driver_id):
-    """
-    Envía al Engine: "central|PETICION|ID_CP|ID_DRIVER"
-    """
-    mensaje = f"central|{peticion}|{cp_id}|{driver_id}"
-    producer.send(ENGINE_TOPIC, mensaje)
-    producer.flush()
-
-def replyToDriver(payload: str) -> None:
-    """
-    Responde al driver (p. ej. "central|OK" o "central|ERROR").
-    """
-    producer.send(DRIVER_TOPIC, payload)
-    producer.flush()
-
-# ====== Clientes ======
-def searchCustomer(id_cliente):
-    return id_cliente in CUSTOMER_IDX
-
-def addCustomer(id_cliente):
-    # Inserta si no existe y añade "ID_DRIVER,0" a Clientes.txt
-    if not searchCustomer(id_cliente):  
-        CUSTOMER_IDX.append(id_cliente)
-        with open(CLIENTES_FILE, "a", encoding="utf-8") as f:
-            f.write(id_cliente + ",0\n")
-        return True
-    return False
-
-# ====== Atender peticiones del Driver ======
-def attendToDriver(peticion, cp_id, driver_id):
-    """
-    - AUTENTIFICACION: lo gestiona Central (Clientes.txt) -> "central|OK"/"central|ERROR".
-    - AUTORIZACION y ESTADO: si el CP existe en CPs_IDX, reenvía al Engine; si no, "central|ERROR".
-    Devuelve string breve para logs.
-    """
-    peticion = (peticion or "").strip().upper()
-
-    if peticion == "AUTENTIFICACION":
-        # Arreglo de lógica: si se añadió nuevo -> OK; si ya existía -> ERROR
-        created = addCustomer(driver_id)          # <-- corregido
-        replyToDriver("central|OK" if created else "central|ERROR")
-        return "AUTENTIFICACION OK" if created else "AUTENTIFICACION ERROR (ya existía)"
-
-    if peticion in ("AUTORIZACION", "ESTADO"):
-        if cp_id not in CPs_IDX:
-            print(f"{peticion}: ERROR (CP '{cp_id}' no encontrado en Central)")
-            replyToDriver("central|ERROR")       # CP desconocido
-            return f"{peticion}: ERROR CP no encontrado"
-        # CP válido -> reenviar al Engine
-        print(f"{peticion}: reenviado a Engine (cp={cp_id}, driver={driver_id})")
-        sendToEngine(peticion, cp_id, driver_id)
-        return f"{peticion}: reenviado"
-
-    # Cualquier otra petición no gestionada por Central
-    print(f"Petición no soportada en Central: {peticion}")
-    replyToDriver("central|ERROR")
-    return "Petición no soportada"
-
-# ====== Kafka Consumer ======
-def create_consumer(bootstrap):
-    try:
-        consumer = KafkaConsumer(
-            TOPIC_REQUESTS,
-            bootstrap_servers=[bootstrap],
-            value_deserializer=lambda m: m.decode(FORMAT),
-            auto_offset_reset="earliest",
-            enable_auto_commit=True,
-            group_id="central-group",
-            client_id="central-1",
-        )
-        print(f"[CENTRAL] Conectado a {bootstrap}, escuchando '{TOPIC_REQUESTS}'…")
-        return consumer
-    except Exception as e:
-        print(f"[CENTRAL] No puedo conectar con el broker '{bootstrap}': {e}")
-        print("--> Verifica que Kafka está arrancado, el puerto es 9092 y advertised.listeners es accesible.")
-        raise
-
-def receive_messages(consumer):
-    for msg in consumer:
-        text = (msg.value or "").strip()
-        if not text:
-            continue
-
-        # Esperado: "driver|PETICION|ID_CP|ID_DRIVER"
-        parts = [p.strip() for p in text.split("|")]
-        if len(parts) != 4:
-            print(f"[CENTRAL] Formato inválido: {text}")
-            replyToDriver("central|ERROR")
-            continue
-
-        remitente, peticion, cp_id, driver_id = parts  # <-- corregido
-
-        if remitente.lower() != "driver":
-            print(f"[CENTRAL] Remitente inesperado: {remitente}")
-            replyToDriver("central|ERROR")
-            continue
-
-        print(f"[CENTRAL] Recibido: {text}")
-        log = attendToDriver(peticion, cp_id, driver_id)   # <-- llamado correcto
-        print(f"[CENTRAL] {log}")
-
-# ====== Carga de ficheros ======
-def cargarClientes(fich: str):
-    """
-    Lee un fichero de puntos de recarga con formato fijo:
-        CP01, Aparcamiento Norte
-        CP02, Parking Sur
-
-    Devuelve: lista[list[str, str]]
-    """
-    c = []
-    with open(fich, "r", encoding="utf-8") as f:
-        for line in f:
-            if line.strip():  # Ignora líneas vacías
-                # Arreglo: split por coma sin asumir espacio; luego strip
-                p1, p2 = line.strip().split(",", 1)        # <-- corregido
-                c.append([p1.strip(), p2.strip()])
-    return c
-
-# ====== Main ======
-def main():
-    print("****** EV_Central ******")
-
-    # Cargar CPs a partir de Cps.txt (coherente con docstring de la función)
-    # Arreglo: rellenar CPs_IDX, no CUSTOMER_IDX
-    try:
-        for cp in cargarClientes(CPS_FILE):        # cp = [id_cp, nombre]
-            CPs_IDX.append(cp[0])                  # <-- corregido
-        print(f"[CENTRAL] Cargados CPs: {len(CPs_IDX)}")
-    except FileNotFoundError:
-        print(f"[CENTRAL] Aviso: no se encontró {CPS_FILE}. CPs_IDX se queda vacío.")
-
-    # Cargar drivers existentes (si quieres precargar, descomenta):
-    # try:
-    #     with open(CLIENTES_FILE, "r", encoding="utf-8") as f:
-    #         for line in f:
-    #             if line.strip():
-    #                 driver_id = line.split(",", 1)[0].strip()
-    #                 CUSTOMER_IDX.append(driver_id)
-    #     print(f"[CENTRAL] Cargados drivers: {len(CUSTOMER_IDX)}")
-    # except FileNotFoundError:
-    #     print(f"[CENTRAL] Aviso: no se encontró {CLIENTES_FILE}. Se creará al registrar un driver.")
-
-    bootstrap = sys.argv[1] if len(sys.argv) > 1 else "localhost:9092"
-    consumer = create_consumer(bootstrap)
-    receive_messages(consumer)
-
-if __name__ == "__main__":
-    main()
-
-################################################
 import socket
 from kafka import KafkaProducer, KafkaConsumer
 import threading
@@ -291,6 +112,17 @@ def searchCP(cp_id):
             return True, cp
     return False, None
 
+def replyToEngine(producer, peticion, cp_id, driver_id):
+    # Mensaje: central|PETICION|CP|DRIVER
+    payload = f"central|{peticion}|{cp_id}|{driver_id}"
+    producer.send(TOPIC_ENGINE, payload)
+    producer.flush(1)
+
+def replyToDriver(producer, texto):
+    # Mensaje: central|RESPUESTA
+    payload = f"central|{texto}"
+    producer.send(TOPIC_DRIVER, payload)
+    producer.flush(1)
 
 def searchCustomer(id_cliente):
     return id_cliente in CUSTOMER_IDX
@@ -311,39 +143,52 @@ def getCPStatus(cp_id):
             return cp.estado
     return None
 
-
-def attendToDriver(peticion, id_cliente, id_cp=None):
-    p = peticion.strip()
-
-    if p == "REGISTRO":
-        if addCustomer(id_cliente):
-            return "Usuario registrado"
+def attendToDriver(peticion, cp_id, driver_id, producer=None):
+    """
+    - AUTENTIFICACION: lo gestiona Central (Clientes.txt) -> "central|OK"/"central|ERROR".
+    - AUTORIZACION y ESTADO: si el CP existe en CPs_IDX, reenvía al Engine; si no, "central|ERROR".
+    Devuelve string breve para logs.
+    """
+    if peticion == "AUTENTIFICACION":
+        if addCustomer(driver_id):
+            print("AUTENTIFICACION OK")
+            return "central|OK"
         else:
-            return "Error: Usuario ya registrado"
+            print("AUTENTIFICACION ERROR")
+            return "central|ERROR"
 
-    elif p == "AUTORIZACION":
-        cp_id = id_cp.strip()
-        found, cp = searchCP(cp_id)
-        if not found:
-            return "Charging Point no encontrado"
+    if peticion in ("AUTORIZACION", "ESTADO"):
+        if cp_id not in CPs_IDX:
+            print(f"{peticion}: ERROR (CP '{cp_id}' no encontrado en Central)")
+            return "central|ERROR"
         else:
-            if cp.getStatus() == "IDLE":
-                cp.start_supply()
-                return "Peticion aceptada"
-            else:
-                return "Peticion denegada"
+            print(f"{peticion}: reenviado a Engine (cp={cp_id}, driver={driver_id})")
+            if producer is not None:
+                replyToEngine(producer, peticion, cp_id, driver_id)
+            return "central|OK"
 
-    else:  # ESTADO
-        cp_id = (id_cp or "").strip()
-        found, cp = searchCP(cp_id)
+    print(f"Petición no soportada en Central: {peticion}")
+    return "central|ERROR"
 
-        if not found:
-            return "Charging Point no encontrado"
-        else:
-            return cp.getStatus() 
+def cargarClientes(fich):
+    """
+    Lee un fichero de clientes con formato:
+        ID_CLIENTE, otro_dato
+
+    Devuelve: lista[str] con los campos en orden plano:
+        [id1, total1, id2, total2, ...]
+    """
+    clientes = []
+    with open(fich, "r", encoding=FORMAT) as f:
+        for line in f:
+            if line.strip():  # Ignora líneas vacías
+                cli_id, total_gastado = line.strip().split(",", 1)
+                clientes.append(cli_id.strip())
+                clientes.append(total_gastado.strip())
+    return clientes
 
 # Tarea 1
-def cargarCPs(fich: str):
+def cargarCPs(fich):
     """
     Lee un fichero de puntos de recarga con formato fijo:
         CP01, Aparcamiento Norte
@@ -361,6 +206,24 @@ def cargarCPs(fich: str):
 
 ######################### KAFKA ##########################
 
+def create_producer(bootstrap):
+    """
+    Crea un productor Kafka con la configuración básica.
+    """
+    try:
+        producer = KafkaProducer(
+            bootstrap_servers=[bootstrap],
+            value_serializer=lambda s: s.encode(FORMAT),
+            linger_ms=10,
+        )
+        print(f"[CENTRAL] Productor conectado a {bootstrap}")
+        return producer
+    except Exception as e:
+        print(f"[CENTRAL] No puedo crear el productor en '{bootstrap}': {e}")
+        print("--> Verifica que Kafka está arrancado, el puerto es 9092 y advertised.listeners es accesible.")
+        raise
+
+
 def create_consumer(bootstrap):
     try:
         consumer = KafkaConsumer(
@@ -376,24 +239,34 @@ def create_consumer(bootstrap):
         return consumer
     except Exception as e:
         print(f"[CENTRAL] No puedo conectar con el broker '{bootstrap}': {e}")
-        print("→ Verifica que Kafka está arrancado, el puerto es 9092 y advertised.listeners es accesible.")
+        print("--> Verifica que Kafka está arrancado, el puerto es 9092 y advertised.listeners es accesible.")
         raise
 
-def receive_messages(consumer):
+def receive_messages(consumer, producer):
     for msg in consumer:
         text = msg.value or ""
         parts = text.split("|")
-        tipo = parts[0].upper() if len(parts) > 0 else ""
-        driver_id = parts[1] if len(parts) > 1 else ""
-        cp_id = parts[2] if len(parts) > 2 else None
 
-        if tipo == FIN:
+        if len(parts) != 4:
+            print(f"[CENTRAL] Formato inválido: {text}")
+            # replyToDriver(producer, "central|ERROR")  # solo si quieres contestar al driver por Kafka
+            continue
+
+        remitente = parts[0]
+        peticion  = parts[1]
+        cp_id     = parts[2]
+        driver_id = parts[3]
+
+        if peticion == FIN:
             print(f"[CENTRAL] Driver {driver_id} cerró sesión.")
             continue
 
         print(f"[CENTRAL] Recibido: {text}")
-        print(f"  → Tipo: {tipo}, Driver: {driver_id}, CP: {cp_id}")
-        # handle_request(tipo, driver_id, cp_id)
+        print(f"  --> remitente: {remitente}, Driver: {driver_id}, CP: {cp_id}")
+
+        # Llama con producer para que, si hace falta, reenvíe a Engine
+        attendToDriver(peticion, cp_id, driver_id, producer)
+        
         
 ######################### SOCKET ##########################
         
@@ -449,14 +322,20 @@ def start(server):
 
 def main():
     
-    '''
     print("****** EV_Central ******")
+    clientes = cargarClientes(CLIENTES_FILE)
+    i = 0
+    for c in clientes
+        if i%2 == 0:
+            CUSTOMER_IDX.append(c)
+        i++
+    
     bootstrap = sys.argv[1] if len(sys.argv) > 1 else "localhost:9092"
     consumer = create_consumer(bootstrap)
-    receive_messages(consumer)
-    '''
-    fich = sys.argv[1] if len(sys.argv) > 1 else CPS_FILE
-    CPs_AUX = cargarCPs(fich)
+    producer = create_producer(bootstrap)
+    receive_messages(consumer, producer)
+    
+    CPs_AUX = cargarCPs(CPS_FILE)
     
     for p in CPs_AUX:
         CPs.append(p)
