@@ -76,19 +76,25 @@ class Monitor:
               
               #el engine activa el boton KO o no funciona
               if(status == "ENGINE|ERROR"):
+                  
                   msg_stat=f"monitor|ESTADO|{self.ID}|ERROR"
                   send(msg_stat, self.sock)
                   
                   print("Averia reportada")
                   break
-                
                 #El engine funciona perfectamente
               elif (status=="ENGINE|CHARGING"):
+                  
                   msg_stat=f"monitor|ESTADO|{self.ID}|CHARGING"
+                  send(msg_stat, self.sock)
+              elif not status:
+                  print("Se cerro la conexion")
+                  msg_stat=f"monitor|ESTADO|{self.ID}|ERROR"
                   send(msg_stat, self.sock)
               else:
                   msg_stat=f"monitor|ESTADO|{self.ID}|IDLE"
                   send(msg_stat, self.sock)
+          
              
           #excepciones          
           except BrokenPipeError:

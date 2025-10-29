@@ -4,12 +4,12 @@ import threading
 import time
 from confluent_kafka import Consumer, KafkaException, KafkaError
 
-IP='172.21.42.10'
+IP='172.20.243.108'
 PORT=5050
 IP_ENGINE='localhost'
 PORT_ENGINE=8080
-IP_BROKER='localhost'
-PORT_BROKER=5643
+IP_BROKER='172.20.243.108'
+PORT_BROKER=9092
 
 class ChargingPoint:
     """
@@ -78,19 +78,21 @@ if __name__ == "__main__":
     hilo_supervision = threading.Thread(target=Punto.Monitor.estado)
     
     activo=Punto.Monitor.conectar_central()
+    
     if activo:
 
         hilo_trabajo.start()
         time.sleep(3)
         hilo_supervision.start()
         time.sleep(2)
-        
+            
         Punto.Engine.menu()
-        
-        hilo_supervision.join()
-        hilo_trabajo.join()
-        
-        
+            
+        hilo_supervision.join(timeout=5)
+        hilo_trabajo.join(timeout=5)
+            
+            
         print("finish")
+        
     else:
         print("error")

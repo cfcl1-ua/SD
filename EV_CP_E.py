@@ -12,15 +12,15 @@ ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 FIN = "FIN"
 MAX_CONEXIONES = 3
-'''
+
 consumer_config = {
     'bootstrap.servers': 'localhost:9092',   # Kafka broker
     'group.id': 'my-group',                   # Consumer group id
     'auto.offset.reset': 'earliest',          # Start reading at the earliest offset
     'enable.auto.commit': True                # Enable auto-commit of offsets
 }
-'''
-def handle_client(conn, addr, connected, status):
+
+def handle_client(conn, addr, engine):
     print(f"MONITOR connected.")
 
     while True:
@@ -30,15 +30,14 @@ def handle_client(conn, addr, connected, status):
             msg = conn.recv(msg_length).decode(FORMAT)
             if msg == "ok":
                 #Te envio mensaje de estado si connected es true
-                print(self.status)
-                if self.status!="ERROR":
-                    conn.send(f"ENGINE|{status}".encode(FORMAT))
+                if engine.status!="ERROR":
+                    conn.send(f"ENGINE|{engine.status}".encode(FORMAT))
                 else:
-                    self.status="ERROR"
-                    conn.send(f"ENGINE|{status}".encode(FORMAT))
+                    engine.status="ERROR"
+                    conn.send(f"ENGINE|{engine.status}".encode(FORMAT))
                     break
-                
     print("Se rompio la conexion")
+    conn.shutdown(socket.SHUT_RDWR)
     conn.close()
     
 class Engine:
@@ -51,10 +50,10 @@ class Engine:
         self.ADDR_SERVER = (SERVER, PORT_SERVER)
         self.connected = False
         self.status = "IDLE"    # OFFLINE, IDLE, CHARGING, ERROR
-
-        #consumer = Consumer(consumer_config)
+        self.tiempo=None
+        consumer = Consumer(consumer_config)
         # Subscribe to the 'numtest' topic
-        #consumer.subscribe(['numtest'])
+        consumer.subscribe(['numtest'])
         
     def estado(self):
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -78,7 +77,7 @@ class Engine:
             
             CONEX_ACTIVAS = threading.active_count()
             if (CONEX_ACTIVAS <= MAX_CONEXIONES): 
-                thread = threading.Thread(target=handle_client, args=(conn, addr, self.connected))
+                thread = threading.Thread(target=handle_client, args=(conn, addr, self))
                 thread.start()
                 print("Se ha conectado con el monitor")
             else:
@@ -97,7 +96,21 @@ class Engine:
         input()
     
     def enchufar(self):
-        self.status="CHARGING"
+        if self.status == "IDLE":
+            self.status="CHARGING"
+            self.start_time=time.time()
+            print("Engine: Iniciando carga del coche...")
+        else:
+            print("El punto de carga ya esta en uso.")
+    
+    def desenchufar(self):
+        if self.status="CHARGING":
+            self.status="IDLE"
+            time_end=time.time() - self.start_time
+            print(f"Engine: Carga detenida. Tiempo: {time_end:.2f} seg")
+            start_time=None
+            return time_end
+        
         
         
     def opciones(self, opc):
@@ -117,11 +130,19 @@ class Engine:
         opc=input()
         self.opciones(opc)
  
-def main():
-    monitor= Engine('localhost', 5643)
-    monitor.estado()
- 
-if __name__ == "__main__" : main()
+def servicios(self):
+    try:
+        for message in self.consumer:
+            print("[Mensaje recibido de central]")
+            #Me dice de enchufar central
+            if message.value == "hola":
+                if
+                self.enchufar()
+                
+            elif message.value == "m":
+                self.desenchufar
+                
+                
     
 
             
