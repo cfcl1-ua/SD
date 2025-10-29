@@ -6,16 +6,15 @@ import threading
 FORMAT = 'utf-8'
 DELAYS = 4  # segundos entre solicitudes
 
-# TOPICS
-TOPIC_DTC = "driver-to-central"   # REGISTRO y FIN
-TOPIC_DTE  = "driver-to-engine"    # ESTADO y AUTORIZACION 
-TOPIC_ANSWERS    = "messenger-to-driver"    # Respuestas 
+# TOPICS globales (iguales para todos)
+TOPIC_DTC = "driver-to-central"       # Drivers -> Central
+TOPIC_CTD = "central-to-driver"       # Central -> Drivers
 
 def menu():
-    opciones = {"1": "REGISTRO", "2": "AUTORIZACION", "3": "ESTADO", "4": "FIN"}
+    opciones = {"1": "AUTENTIFICACION", "2": "AUTORIZACION", "3": "ESTADO", "4": "FIN"}
     while True:
         print("\n===== MENÚ =====")
-        print("1. REGISTRO")
+        print("1. AUTENTIFICACION")
         print("2. AUTORIZACION")
         print("3. ESTADO")
         print("4. FIN")
@@ -26,63 +25,63 @@ def menu():
 
 def sendRequests(bootstrap_server: str, driver_id: str):
     """
-    Formatos enviados:
-      REGISTRO -> 'REGISTRO|<DRIVER_ID>'        (a CENTRAL)
-      AUTORIZACION -> 'AUTORIZACION|<DRIVER_ID>'(a ENGINE)
-      ESTADO -> 'ESTADO|<DRIVER_ID>'            (a ENGINE)
-      FIN -> 'FIN|<DRIVER_ID>'                  (a CENTRAL)
+    Formato (4 campos): REM|PETICION|CP|DRIVER
+      AUTENTIFICACION -> DRIVER|AUTENTIFICACION|NA|<DRIVER_ID>
+      AUTORIZACION    -> DRIVER|AUTORIZACION|<CP_ID>|<DRIVER_ID>
+      ESTADO          -> DRIVER|ESTADO|<CP_ID>|<DRIVER_ID>
+      FIN             -> DRIVER|FIN|NA|<DRIVER_ID>
     """
     producer = KafkaProducer(
         bootstrap_servers=[bootstrap_server],
-        value_serializer=lambda v: v.encode(FORMAT)  # string -> bytes
+        value_serializer=lambda v: v.encode(FORMAT)
     )
     print(f"[DRIVER] Conectado a Kafka en {bootstrap_server}")
 
     while True:
         tipo = menu()
 
+        # CP según el tipo
+        if tipo in ("AUTORIZACION", "ESTADO"):
+            cp_id = input("Introduce el ID del CP: ").strip()
+            if not cp_id:
+                print("ERROR: CP vacío. Cancelo envío.")
+                continue
+        else:
+            cp_id = "None"
+
+        msg = f"DRIVER|{tipo}|{cp_id}|{driver_id}"
+        producer.send(TOPIC_DTC, msg)
+        producer.flush()
+        print(f"[DRIVER] Enviado → ({TOPIC_DTC}): {msg}")
+
         if tipo == "FIN":
-            msg = f"DRIVER|FIN|{driver_id}"
-            producer.send(TOPIC_DTC, msg)
-            producer.flush()
-            print(f"[DRIVER] Enviado: {msg}")
             print("[DRIVER] Fin de sesión.")
             break
 
-        if tipo == "REGISTRO":
-            topic = TOPIC_DTC
-            msg = f"DRIVER|REGISTRO|{driver_id}"
-        elif tipo in ("AUTORIZACION", "ESTADO"):
-            topic = TOPIC_DTE
-            msg = f"DRIVER|{tipo}|{driver_id}"
-            
-        producer.send(topic, msg)
-        producer.flush()
-        print(f"[DRIVER] Enviado ({topic}): {msg}")
         time.sleep(DELAYS)
 
     producer.close()
 
 def receiveAnswers(bootstrap_server: str, driver_id: str):
     """
-    Espera respuestas en TOPIC_ANSWERS con formato:
-      'RESPUESTA|<DRIVER_ID>|<MENSAJE>'
+    Escucha respuestas de la Central en TOPIC_CTD.
+    Formato esperado: RESPUESTA|<DRIVER_ID>|<MENSAJE>
     """
     consumer = KafkaConsumer(
-        TOPIC_ANSWERS,
+        TOPIC_CTD,
         bootstrap_servers=[bootstrap_server],
         value_deserializer=lambda m: m.decode(FORMAT),
         auto_offset_reset="latest",
         enable_auto_commit=True,
-        group_id=f"driver-{driver_id}",
+        group_id="drivers-group",  # grupo común de drivers
     )
-    print(f"[DRIVER] Escuchando respuestas en '{TOPIC_ANSWERS}'…")
+    print(f"[DRIVER] Escuchando respuestas en '{TOPIC_CTD}'…")
     for rec in consumer:
         text = rec.value or ""
         parts = text.split("|", 2)
         if len(parts) >= 2 and parts[1] == driver_id:
             mensaje = parts[2] if len(parts) >= 3 else ""
-            print(f"[RESPUESTA → {driver_id}]: {mensaje}")
+            print(f"[CENTRAL → {driver_id}]: {mensaje}")
 
 def main():
     print("****** EV_Driver ******")
@@ -93,7 +92,6 @@ def main():
     bootstrap_server = sys.argv[1]
     driver_id = sys.argv[2]
 
-    # Hilo para escuchar respuestas mientras enviamos peticiones
     t = threading.Thread(target=receiveAnswers, args=(bootstrap_server, driver_id), daemon=True)
     t.start()
 
@@ -103,4 +101,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
