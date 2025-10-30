@@ -14,8 +14,6 @@ MAX_CONEXIONES = 2
 PRICE_PER_KWH = 0.35  # €/kWh
 CLIENTES_FILE = "Clientes.txt"
 CPS_FILE = "Cps.txt"
-CPs = []
-CPs_AUX = []
 CPs_IDX = []
 CUSTOMER_IDX = []
 
@@ -199,15 +197,16 @@ def cargarCPs(fich):
         CP01, Aparcamiento Norte
         CP02, Parking Sur
 
-    Devuelve: lista[ChargingPoint]
+    Devuelve: lista[str] con los identificadores de los CPs.
     """
-    cps = []
+    cps_idx = []
     with open(fich, "r", encoding="utf-8") as f:
         for line in f:
             if line.strip():  # Ignora líneas vacías
-                cp_id, location = line.strip().split(", ", 1)
-                cps.append(ChargingPoint(cp_id, location))
-    return cps
+                cp_id, _ = line.strip().split(", ", 1)
+                cps_idx.append(cp_id.strip())
+    return cps_idx
+
 ######################### ENGINE #########################
 
 def attendToEngine(producer, msg_txt: str):
@@ -424,12 +423,7 @@ def main():
     t_kafka = threading.Thread(target=run_kafka_loop, args=(bootstrap,), daemon=True)
     t_kafka.start()
     
-    CPs_AUX = cargarCPs(CPS_FILE)
-    
-    for p in CPs_AUX:
-        CPs.append(p)
-        CPs_IDX.append(p.getId())
-        print(p.get_info()) 
+    CPs_IDX = cargarCPs(CPS_FILE) 
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # opcional pero útil
