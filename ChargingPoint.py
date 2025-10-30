@@ -2,7 +2,6 @@ from EV_CP_M import Monitor
 from EV_CP_E import Engine
 import threading
 import time
-from confluent_kafka import Consumer, KafkaException, KafkaError
 import argparse
 
 class ChargingPoint:
@@ -91,7 +90,7 @@ if __name__ == "__main__":
     hilo_trabajo = threading.Thread(target=Punto.Engine.estado)
     hilo_supervision = threading.Thread(target=Punto.Monitor.estado)
     #hilo donde el engine realizara los servicios enviados por central
-    hilo.peticiones = threading.Thread(target=Punto.Engine.servicios)
+    hilo_peticiones = threading.Thread(target=Punto.Engine.servicios)
     
     #Lo conectamos con central
     activo=Punto.Monitor.conectar_central()
@@ -101,7 +100,7 @@ if __name__ == "__main__":
         hilo_trabajo.start()
         time.sleep(3)
         hilo_supervision.start()
-        hilo.peticiones.start()
+        hilo_peticiones.start()
         
         #al presionar enter se activa el boton de ko de engine
         Punto.Engine.menu()
