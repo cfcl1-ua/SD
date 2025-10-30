@@ -291,13 +291,13 @@ def receive_messages(consumer, producer):
 
         if len(parts) == 3:
             # driver|PETICION|DRIVER_ID
-            remitente = parts[0]
+            remitente = parts[0].lower()
             peticion  = parts[1]
             driver_id = parts[2]
             cp_id     = ""   # para que exista la variable al imprimir
         elif len(parts) == 4:
             # driver|PETICION|CP_ID|DRIVER_ID   o   engine|RESPUESTA|CP_ID|DRIVER_ID
-            remitente = parts[0]
+            remitente = parts[0].lower()
             peticion  = parts[1]
             cp_id     = parts[2]
             driver_id = parts[3]
@@ -314,6 +314,7 @@ def receive_messages(consumer, producer):
 
         if remitente == "driver":
             # tu attendToDriver ahora recibe también el producer
+            print("CARLOS")
             attendToDriver(peticion, cp_id, driver_id, producer)
 
         elif remitente == "engine":
@@ -419,7 +420,7 @@ def main():
             CUSTOMER_IDX.append(c)
         i+=1
     
-    bootstrap = sys.argv[1] if len(sys.argv) > 1 else "172.20.243.108:9092"
+    bootstrap = SERVER
     t_kafka = threading.Thread(target=run_kafka_loop, args=(bootstrap,), daemon=True)
     t_kafka.start()
     
