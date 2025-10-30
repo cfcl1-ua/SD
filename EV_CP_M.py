@@ -12,7 +12,6 @@ def send(msg, client_socket):
     msg_length = len(message)
     send_length = str(msg_length).encode(FORMAT)
     send_length += b' ' * (HEADER - len(send_length))
-    #cambiar esto ya que es solo para central y no para engine
     client_socket.send(send_length)
     client_socket.send(message)
 
@@ -65,43 +64,48 @@ class Monitor:
     #verifica el estado de engine
     def estado(self):  #cliente
         client_engine= socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_engine.connect(self.addr_engine)
-        print (f"Conexion establecida con engine")
-        while True:
-          try:
-              msg_stat="ok"
-              send(msg_stat, client_engine)
-              status=client_engine.recv(2048).decode(FORMAT)
-              time.sleep(1)
-              
-              #el engine activa el boton KO o no funciona
-              if(status == "ENGINE|ERROR"):
+        cliente.settimeout(8)
+        try:
+            client_engine.connect(self.addr_engine)
+            print (f"Conexion establecida con engine")
+            while True:
+                
+                msg_stat="ok"
+                send(msg_stat, client_engine)
+                status=client_engine.recv(2048).decode(FORMAT)
+                time.sleep(1)
                   
-                  msg_stat=f"monitor|ESTADO|{self.ID}|ERROR"
-                  send(msg_stat, self.sock)
-                  
-                  print("Averia reportada")
-                  break
-                #El engine funciona perfectamente
-              elif (status=="ENGINE|CHARGING"):
-                  
-                  msg_stat=f"monitor|ESTADO|{self.ID}|CHARGING"
-                  send(msg_stat, self.sock)
-              elif not status:
-                  print("Se cerro la conexion")
-                  msg_stat=f"monitor|ESTADO|{self.ID}|ERROR"
-                  send(msg_stat, self.sock)
-              else:
-                  msg_stat=f"monitor|ESTADO|{self.ID}|IDLE"
-                  send(msg_stat, self.sock)
-          
+                #el engine activa el boton KO o no funciona
+                if(status == "ENGINE|ERROR"):
+                      
+                    msg_stat=f"monitor|ESTADO|{self.ID}|ERROR"
+                    send(msg_stat, self.sock)
+                      
+                    print("Averia reportada")
+                    break
+                    #El engine esta en uso
+                elif (status=="ENGINE|CHARGING"):
+                      
+                    msg_stat=f"monitor|ESTADO|{self.ID}|CHARGING"
+                    send(msg_stat, self.sock)
+                    #El engine no envia mas mensajes por lo tanto esta cerrado
+                elif not status:
+                    print("Se cerro la conexion")
+                    msg_stat=f"monitor|ESTADO|{self.ID}|ERROR"
+                    send(msg_stat, self.sock)
+                      #El estado funciona perfectamente y no esta en uso
+                else:
+                    msg_stat=f"monitor|ESTADO|{self.ID}|IDLE"
+                    send(msg_stat, self.sock)
+        #Si el monitor no logra conectarse al engine se interpretara que el engine esta desconectado
+        except socket.timeout:
+             print(f"No se pudo conectar al Engine.")
+             msg.stat="monitor|ESTADO|{self.ID}|OFFLINE"
+             send(msg_stat, self.sock)
              
-          #excepciones          
-          except BrokenPipeError:
-              print(f"se perdio la conexion")
-              msg_stat=f"monitor|ESTADO|{self.ID}|ERROR"
-              send(msg_stat, self.sock)
-              print("Averia reportada a central")
-              break
-            
+        except ConnectionRefusedError:
+             print("El servidor no está disponible.")
+        
+        finally:
+            client.close()
     

@@ -3,13 +3,7 @@ from EV_CP_E import Engine
 import threading
 import time
 from confluent_kafka import Consumer, KafkaException, KafkaError
-
-IP='172.20.243.108'
-PORT=5050
-IP_ENGINE='localhost'
-PORT_ENGINE=8080
-IP_BROKER='172.20.243.108'
-PORT_BROKER=9092
+import argparse
 
 class ChargingPoint:
     """
@@ -17,7 +11,7 @@ class ChargingPoint:
     Será instanciado por la Central a partir de la información de un archivo .txt.
     """
 
-    def __init__(self, cp_id, location):
+    def __init__(self, cp_id, location, IP, PORT, IP_ENGINE, PORT_ENGINE, cp_id, location, IP_BROKER, PORT_BROKER):
         self.id = cp_id
         self.location = location
         self.active = False        # Si el punto está encendido o no
@@ -73,10 +67,33 @@ class ChargingPoint:
         return f"<ChargingPoint id={self.id} status={self.status} active={self.active}>"
     
 if __name__ == "__main__":
-    Punto = ChargingPoint(2, "san vicente")
+    
+    parser = argparse.ArgumentParser(description="Argumentos para el CP")
+    parser.add_argument("--central", type=str, required=True,
+                    help="IP y puerto en formato IP:PUERTO, ejemplo 127.0.0.1:5000")
+    parser.add_argument("--engine", type=str, required=True,
+                    help="IP y puerto en formato IP:PUERTO, ejemplo 127.0.0.1:5000")
+    parser.add_argument("--id", type=str, required=True,
+                    help="ID del CP")
+    parser.add_argument("--localizacion", type=str, required=True,
+                    help="lugar del CP")
+    parser.add_argument("--broker", type=str, required=True,
+                    help="IP y puerto en formato IP:PUERTO, ejemplo 127.0.0.1:5000")
+    args = parser.parse_args()
+    
+    ip, puerto = args.central.split(:)
+    ip_engine, port_engine= args.engine.split(:)
+    ip_broker, port_broker = args.broker.split(:)
+    
+    Punto=ChargingPoint(ip, int(puerto), ip_engine, int(port_engine), args.id, args.localizacion, ip_broker, int(port_broker))
+        
+    #hilo donde monitor checara el estado del punto de arga
     hilo_trabajo = threading.Thread(target=Punto.Engine.estado)
     hilo_supervision = threading.Thread(target=Punto.Monitor.estado)
+    #hilo donde el engine realizara los servicios enviados por central
+    hilo.peticiones = threading.Thread(target=Punto.Engine.servicios)
     
+    #Lo conectamos con central
     activo=Punto.Monitor.conectar_central()
     
     if activo:
@@ -84,10 +101,11 @@ if __name__ == "__main__":
         hilo_trabajo.start()
         time.sleep(3)
         hilo_supervision.start()
-        time.sleep(2)
-            
+        hilo.peticiones.start()
+        
+        #al presionar enter se activa el boton de ko de engine
         Punto.Engine.menu()
-            
+                    
         hilo_supervision.join(timeout=5)
         hilo_trabajo.join(timeout=5)
             
