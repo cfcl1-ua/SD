@@ -16,19 +16,6 @@ MAX_CONEXIONES = 3
 TOPIC_ENGINE = "central-to-engine"
 TOPIC_CENTRAL = "engine-to-central"
 
-consumer_config = {
-    TOPIC_ENGINE,
-    bootstrap_servers=['localhost:9092'],
-    auto_offset_reset='earliest',
-    enable_auto_commit=True,
-    group_id='grupo-consumidor',
-    value_deserializer=lambda v: json.loads(v.decode('utf-8'))           # Enable auto-commit of offsets
-}
-
-producer = KafkaProducer(
-    bootstrap_servers=['localhost:9092'],
-    value_serializer=lambda v: json.dumps(v).encode('utf-8')
-)
 
 #Al conectarse correctamente empieza a enviar periodicamente el estado al monitor
 def handle_client(conn, addr, engine):
@@ -63,14 +50,14 @@ class Engine:
         self.status = "IDLE"    # OFFLINE, IDLE, CHARGING, ERROR
         self.tiempo=None
         
-        self.consumer = KafkaConsumer{
+        self.consumer = KafkaConsumer(
         TOPIC_ENGINE,
         bootstrap_servers=self.ADDR_SERVER,
         auto_offset_reset='earliest',
         enable_auto_commit=True,
         group_id='grupo-consumidor',
         value_deserializer=lambda v: json.loads(v.decode('utf-8'))           # Enable auto-commit of offsets
-        }
+        )
         
         self.producer = KafkaProducer(
         bootstrap_servers=['localhost:9092'],
@@ -170,20 +157,23 @@ class Engine:
             case _: print("Mensaje no  valido")
             
     def menu(self):
-        print("<<MENU CHARGING POINT>>")
-        print("Elige una de las opciones:")
-        #Se introduce la id del driver para realizar las funciones
-        print("1. Peticion manualmente")
-        #Boton ko
-        print("2. Boton KO")
-        #Sale del CP
-        print("3. Salir")
-        opc=input()
-        if int(opc) == 3:
-            print("Saliendo del programa")
-            break
-        else:
-            self.opciones(opc)
+        while True:
+            print("<<MENU CHARGING POINT>>")
+            print("Elige una de las opciones:")
+            #Se introduce la id del driver para realizar las funciones
+            print("1. Peticion manualmente")
+            #Boton ko
+            print("2. Boton KO")
+            #Sale del CP
+            print("3. Salir")
+            opc=input()
+            if int(opc) == 3:
+                print("Saliendo del programa")
+                break
+            else:
+                self.opciones(opc)
+
+
     #Envia el estado a central
     def estado_driver(driver_id):
         #engine|ESTADO|DRIVER_ID

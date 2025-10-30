@@ -11,7 +11,7 @@ class ChargingPoint:
     Será instanciado por la Central a partir de la información de un archivo .txt.
     """
 
-    def __init__(self, cp_id, location, IP, PORT, IP_ENGINE, PORT_ENGINE, cp_id, location, IP_BROKER, PORT_BROKER):
+    def __init__(self, cp_id, location, IP, PORT, IP_ENGINE, PORT_ENGINE, IP_BROKER, PORT_BROKER):
         self.id = cp_id
         self.location = location
         self.active = False        # Si el punto está encendido o no
@@ -81,9 +81,9 @@ if __name__ == "__main__":
                     help="IP y puerto en formato IP:PUERTO, ejemplo 127.0.0.1:5000")
     args = parser.parse_args()
     
-    ip, puerto = args.central.split(:)
-    ip_engine, port_engine= args.engine.split(:)
-    ip_broker, port_broker = args.broker.split(:)
+    ip, puerto = args.central.split(":")
+    ip_engine, port_engine= args.engine.split(":")
+    ip_broker, port_broker = args.broker.split(":")
     
     Punto=ChargingPoint(ip, int(puerto), ip_engine, int(port_engine), args.id, args.localizacion, ip_broker, int(port_broker))
         
