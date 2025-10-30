@@ -75,7 +75,7 @@ if __name__ == "__main__":
     parser.add_argument("--id", type=str, required=True,
                     help="ID del CP")
     parser.add_argument("--localizacion", type=str, required=True,
-                    help="lugar del CP")
+                    help="lugar del CP", default="calle falsa")
     parser.add_argument("--broker", type=str, required=True,
                     help="IP y puerto en formato IP:PUERTO, ejemplo 127.0.0.1:5000")
     args = parser.parse_args()

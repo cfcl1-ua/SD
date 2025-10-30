@@ -9,7 +9,6 @@ from json import loads
 HEADER = 64
 PORT = 8080
 SERVER = socket.gethostbyname(socket.gethostname())
-ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 FIN = "FIN"
 MAX_CONEXIONES = 3
@@ -52,7 +51,7 @@ class Engine:
         
         self.consumer = KafkaConsumer(
         TOPIC_ENGINE,
-        bootstrap_servers=self.ADDR_SERVER,
+        bootstrap_servers=[self.ADDR_SERVER],
         auto_offset_reset='earliest',
         enable_auto_commit=True,
         group_id='grupo-consumidor',
