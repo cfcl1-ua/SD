@@ -57,17 +57,17 @@ class Monitor:
                 return False
             
         else:
-            print(f"Error al conectar con central")
-            client.close()
+            print("Error al conectar con central")
+            self.sock.close()
             return False
         
     #verifica el estado de engine
     def estado(self):  #cliente
         client_engine= socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        cliente.settimeout(8)
+        client_engine.settimeout(8)
         try:
             client_engine.connect(self.addr_engine)
-            print (f"Conexion establecida con engine")
+            print ("Conexion establecida con engine")
             while True:
                 
                 msg_stat="ok"
@@ -99,13 +99,13 @@ class Monitor:
                     send(msg_stat, self.sock)
         #Si el monitor no logra conectarse al engine se interpretara que el engine esta desconectado
         except socket.timeout:
-             print(f"No se pudo conectar al Engine.")
-             msg.stat="monitor|ESTADO|{self.ID}|OFFLINE"
-             send(msg_stat, self.sock)
+            print("No se pudo conectar al Engine.")
+            msg_stat="monitor|ESTADO|{self.ID}|OFFLINE"
+            send(msg_stat, self.sock)
              
         except ConnectionRefusedError:
-             print("El servidor no está disponible.")
+            print("El servidor no está disponible.")
         
         finally:
-            client.close()
+            self.sock.close()
     
