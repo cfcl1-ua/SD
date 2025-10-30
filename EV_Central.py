@@ -6,7 +6,7 @@ from ChargingPoint import ChargingPoint
 
 HEADER = 64
 PORT = 5050
-SERVER = "172.20.243.108" # Poner la ip del pc 
+SERVER = "localhost"
 ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 FIN = "FIN"
@@ -354,6 +354,11 @@ def start(server):
 def main():
     
     print("****** EV_Central ******")
+    
+    # Pedir la IP al usuario
+    SERVER = input("Introduce la IP del servidor: ").strip()
+    print(f"[INFO] Servidor configurado en {SERVER}:{PORT}\n")
+    ADDR = (SERVER, PORT)
     
     clientes = cargarClientes(CLIENTES_FILE)
     i = 0
