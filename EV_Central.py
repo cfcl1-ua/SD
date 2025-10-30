@@ -11,6 +11,7 @@ ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 FIN = "FIN"
 MAX_CONEXIONES = 2
+PRICE_PER_KWH = 0.35  # €/kWh
 CLIENTES_FILE = "Clientes.txt"
 CPS_FILE = "Cps.txt"
 CPs = []
@@ -207,6 +208,44 @@ def cargarCPs(fich):
                 cp_id, location = line.strip().split(", ", 1)
                 cps.append(ChargingPoint(cp_id, location))
     return cps
+######################### ENGINE #########################
+
+def attendToEngine(producer, msg_txt: str):
+    """
+    Procesa una respuesta que viene del Engine (por Kafka) y la reenvía al driver.
+    Formatos esperados:
+        - "driver|120|DRIVER_ID"     -> 120 segundos
+        - "driver|IDLE|DRIVER_ID"    -> estado del CP
+
+    Siempre reenvía con:
+        "central|...|DRIVER_ID"
+    usando replyToDriver(producer, texto)
+    """
+
+    parts = msg_txt.split("|")
+
+    # Mensaje mínimo: driver|respuesta|DRIVER_ID
+    if len(parts) != 3:
+        replyToDriver(producer, "central|ERROR")
+        return
+
+    origen = parts[0]
+    respuesta = parts[1]
+    driver_id = parts[2]
+
+    # 1) Caso TIEMPO --> si la respuesta es un número entero
+    if respuesta.isdigit():
+        segundos = int(respuesta)
+        horas = segundos / 3600
+        precio = horas * PRICE_PER_KWH
+        resp = f"central|TIEMPO={segundos}s;PRECIO={precio:.2f}€|{driver_id}"
+        replyToDriver(producer, resp)
+        return
+
+    # 2) Caso ESTADO → si no es número, lo tratamos como texto de estado
+    resp = f"central|ESTADO={respuesta}|{driver_id}"
+    replyToDriver(producer, resp)
+    return
 
 ######################### KAFKA ##########################
 
@@ -251,15 +290,21 @@ def receive_messages(consumer, producer):
         text = msg.value or ""
         parts = text.split("|")
 
-        if len(parts) != 4:
+        if len(parts) == 3:
+            # driver|PETICION|DRIVER_ID
+            remitente = parts[0]
+            peticion  = parts[1]
+            driver_id = parts[2]
+            cp_id     = ""   # para que exista la variable al imprimir
+        elif len(parts) == 4:
+            # driver|PETICION|CP_ID|DRIVER_ID   o   engine|RESPUESTA|CP_ID|DRIVER_ID
+            remitente = parts[0]
+            peticion  = parts[1]
+            cp_id     = parts[2]
+            driver_id = parts[3]
+        else:
             print(f"[CENTRAL] Formato inválido: {text}")
-            # replyToDriver(producer, "central|ERROR")  # solo si quieres contestar al driver por Kafka
             continue
-
-        remitente = parts[0]
-        peticion  = parts[1]
-        cp_id     = parts[2]
-        driver_id = parts[3]
 
         if peticion == FIN:
             print(f"[CENTRAL] Driver {driver_id} cerró sesión.")
@@ -268,9 +313,17 @@ def receive_messages(consumer, producer):
         print(f"[CENTRAL] Recibido: {text}")
         print(f"  --> remitente: {remitente}, Driver: {driver_id}, CP: {cp_id}")
 
-        # Llama con producer para que, si hace falta, reenvíe a Engine
-        attendToDriver(peticion, cp_id, driver_id, producer)
-        
+        if remitente == "driver":
+            # tu attendToDriver ahora recibe también el producer
+            attendToDriver(peticion, cp_id, driver_id, producer)
+
+        elif remitente == "engine":
+            # el engine habla como "engine|...", pero tu attendToEngine
+            # quiere "driver|..." -> lo adaptamos aquí sin cambiar tu lógica
+            msg_txt = f"driver|{peticion}|{driver_id}"
+            attendToEngine(producer, msg_txt)
+
+
 def run_kafka_loop(bootstrap):
     """Crea consumer/producer y entra al bucle Kafka (hilo dedicado)."""
     consumer = None
