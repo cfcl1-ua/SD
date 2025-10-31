@@ -12,8 +12,11 @@ def send(msg, client_socket):
     msg_length = len(message)
     send_length = str(msg_length).encode(FORMAT)
     send_length += b' ' * (HEADER - len(send_length))
-    client_socket.send(send_length)
-    client_socket.send(message)
+    try:    
+        client_socket.send(send_length)
+        client_socket.send(message)
+    except (ConnectionResetError, BrokenPipeError):
+        print("[ERROR] Conexión con engine cerrada.")
 
 #clase monitor
 class Monitor:
@@ -31,6 +34,7 @@ class Monitor:
         
     #conecta con central
     def conectar_central(self):
+        print("[DEBUG] Creando socket del Monitor...")
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.connect(self.addr)
         
@@ -39,6 +43,12 @@ class Monitor:
         
         response=self.sock.recv(2048).decode(FORMAT)
         #mensaje de confirmacion de central
+        print(f"[DEBUG] Respuesta recibida: '{response}'")
+        
+        if "DEMASIADAS CONEXIONES" in response.upper():
+            print("⚠️ El servidor central está lleno. Espera un momento e inténtalo de nuevo.")
+            self.sock.close()
+            return False
         if int(response) == 1:
             print("conectado con central")
             
@@ -107,5 +117,6 @@ class Monitor:
             print("El servidor no está disponible.")
         
         finally:
-            self.sock.close()
+            print("[DEBUG] Conexión con engine cerrada, pero la conexión con central sigue activa.")
+            client_engine.close()
     

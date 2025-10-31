@@ -84,24 +84,25 @@ if __name__ == "__main__":
     ip_engine, port_engine= args.engine.split(":")
     ip_broker, port_broker = args.broker.split(":")
     
-    Punto=ChargingPoint(ip, int(puerto), ip_engine, int(port_engine), args.id, args.localizacion, ip_broker, int(port_broker))
+    Punto=ChargingPoint(args.id, args.localizacion, ip, int(puerto), ip_engine, int(port_engine), ip_broker, int(port_broker))
         
-    #hilo donde monitor checara el estado del punto de arga
-    hilo_trabajo = threading.Thread(target=Punto.Engine.estado)
-    hilo_supervision = threading.Thread(target=Punto.Monitor.estado)
-    #hilo donde el engine realizara los servicios enviados por central
-    hilo_peticiones = threading.Thread(target=Punto.Engine.servicios)
-    
     #Lo conectamos con central
     activo=Punto.Monitor.conectar_central()
     
     if activo:
+        
+        #hilo donde monitor checara el estado del punto de arga
+        hilo_trabajo = threading.Thread(target=Punto.Engine.estado)
+        hilo_supervision = threading.Thread(target=Punto.Monitor.estado)
+        #hilo donde el engine realizara los servicios enviados por central
+        hilo_peticiones = threading.Thread(target=Punto.Engine.servicios)
+    
 
         hilo_trabajo.start()
         time.sleep(3)
         hilo_supervision.start()
         hilo_peticiones.start()
-        
+        time.sleep(1)
         #al presionar enter se activa el boton de ko de engine
         Punto.Engine.menu()
                     

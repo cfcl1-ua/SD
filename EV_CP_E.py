@@ -2,9 +2,8 @@ import socket
 import threading
 import time
 from kafka import KafkaProducer, KafkaConsumer
-from pymongo import MongoClient
 from json import loads
-
+import json
 
 HEADER = 64
 PORT = 8080
@@ -37,6 +36,7 @@ def handle_client(conn, addr, engine):
     print("Se rompio la conexion")
     conn.shutdown(socket.SHUT_RDWR)
     conn.close()
+    engine.conexiones_activas -= 1
     
 class Engine:
     def __init__(self, SERVER, PORT_SERVER):
@@ -48,6 +48,7 @@ class Engine:
         self.ADDR_SERVER = f"{self.SERVER}:{self.PORT_SERVER}"
         self.status = "IDLE"    # OFFLINE, IDLE, CHARGING, ERROR
         self.tiempo=None
+        self.conexiones=0
         
         self.consumer = KafkaConsumer(
         TOPIC_ENGINE,
@@ -55,12 +56,12 @@ class Engine:
         auto_offset_reset='earliest',
         enable_auto_commit=True,
         group_id='grupo-consumidor',
-        value_deserializer=lambda v: json.loads(v.decode('utf-8'))           # Enable auto-commit of offsets
+        value_deserializer=lambda v: v.decode(FORMAT)           # Enable auto-commit of offsets
         )
         
         self.producer = KafkaProducer(
-        bootstrap_servers=['localhost:9092'],
-        value_serializer=lambda v: json.dumps(v).encode('utf-8')
+        bootstrap_servers=[self.ADDR_SERVER],
+        value_serializer=lambda v: v.encode(FORMAT)
         )
         
     def estado(self):
@@ -69,11 +70,6 @@ class Engine:
         server.bind(self.ADDR)
         server.listen()
         print(f"[LISTENING] Servidor a la escucha en {SERVER}")
-        CONEX_ACTIVAS = threading.active_count()-1
-        print(CONEX_ACTIVAS)
-        self.connected=threading.Event() #lo pongo como evento para que todos los hilos puedan ver el cambio
-        self.connected.set()
-        print(self.connected)
         server.settimeout(10.0)
         while True:
             try:
@@ -84,8 +80,8 @@ class Engine:
                 print(f"[ERROR] {e}")
                 continue
             
-            CONEX_ACTIVAS = threading.active_count()
-            if (CONEX_ACTIVAS <= MAX_CONEXIONES):
+            if (self.conexiones <= MAX_CONEXIONES):
+                self.conexiones += 1
                 thread = threading.Thread(target=handle_client, args=(conn, addr, self))
                 thread.start()
                 print("Se ha conectado con el monitor")
@@ -129,7 +125,7 @@ class Engine:
             print("Respesta enviada")
             time.sleep(1)
     
-    def menu_driver():
+    def menu_driver(self):
         print("ID del driver:\n")
         driver=input()
         while True:
@@ -174,7 +170,7 @@ class Engine:
 
 
     #Envia el estado a central
-    def estado_driver(driver_id):
+    def estado_driver(self, driver_id):
         #engine|ESTADO|DRIVER_ID
         mensaje=f"engine|{self.status}|{driver_id}"
         self.producer.send(TOPIC_CENTRAL, value=mensaje)
@@ -196,8 +192,11 @@ class Engine:
             #Me dice que lo desenchufe del driver 
             elif peticion == "FIN":
                 self.desenchufar(driver_id)
+            '''
             elif peticion == "ESTADO":
                 self.estado_driver(driver_id)
+            else:
+            '''    
     
                 
                 
