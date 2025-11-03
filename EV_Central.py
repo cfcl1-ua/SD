@@ -3,6 +3,8 @@ from kafka import KafkaProducer, KafkaConsumer
 import threading
 import sys
 from ChargingPoint import ChargingPoint
+from Interfaz import interfaz
+import time
 
 HEADER = 64
 PORT = 5050
@@ -11,10 +13,11 @@ ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 FIN = "FIN"
 MAX_CONEXIONES = 2
-PRICE_PER_KWH = 0.35  # €/kWh
+PRICE_PER_KWH = 0.28  # €/kWh
 CLIENTES_FILE = "Clientes.txt"
 CPS_FILE = "Cps.txt"
-CPs_IDX = []
+CPS = []
+CPS_IDX = []
 CUSTOMER_IDX = []
 CONEX_ACTIVAS = 0
 
@@ -26,6 +29,12 @@ TOPIC_REQUESTS = TOPIC_DTC            # Central escucha peticiones del driver
 TOPIC_CENTRAL="engine-to-central"
    
 ########################## MONITOR ######################
+
+##########################################################
+# ==== DASHBOARD WEB PARA MONITORIZAR LOS PUNTOS DE RECARGA ====
+##########################################################
+
+
             
 def isEmpty(x):
     return x==None or x==""
@@ -79,17 +88,17 @@ def attendToMonitor(peticion, id_cp, var):
     """
     if peticion == "AUTENTIFICACION":
         # ¿ya está en memoria?
-        if id_cp in CPs_IDX:
+        if id_cp in CPS_IDX:
             return "central|ERROR"
 
         if not insertToCPsBD(id_cp, var, "IDLE"):
             return "central|ERROR"
 
-        CPs_IDX.append(id_cp)
+        CPS_IDX.append(id_cp)
         return "central|OK"
 
     elif peticion == "ESTADO":
-        if id_cp not in CPs_IDX:
+        if id_cp not in CPS_IDX:
             return "central|ERROR"
 
         if not updateStatusCP(id_cp, var):
@@ -98,7 +107,7 @@ def attendToMonitor(peticion, id_cp, var):
         return "central|OK"
 
     else:
-        if id_cp in CPs_IDX:
+        if id_cp in CPS_IDX:
             return "REGISTRADO"
         return "DESCONOCIDO"
          
@@ -125,8 +134,7 @@ def replyToEngine(producer, peticion, cp_id, driver_id):
 
 def replyToDriver(producer, texto):
     # Mensaje: central|RESPUESTA
-    print("FEDERICO")
-    payload = f"central|{texto}"
+    payload = f"{texto}"
     producer.send(TOPIC_CTD, payload)
     producer.flush(1)
 
@@ -152,7 +160,7 @@ def getCPStatus(cp_id):
 def attendToDriver(peticion, cp_id, driver_id, producer=None):
     """
     - AUTENTIFICACION: lo gestiona Central (Clientes.txt) -> "central|OK"/"central|ERROR".
-    - AUTORIZACION y ESTADO: si el CP existe en CPs_IDX, reenvía al Engine; si no, "central|ERROR".
+    - AUTORIZACION y ESTADO: si el CP existe en CPS_IDX, reenvía al Engine; si no, "central|ERROR".
     Devuelve string breve para logs.
     """
     if peticion == "AUTENTIFICACION":
@@ -163,8 +171,8 @@ def attendToDriver(peticion, cp_id, driver_id, producer=None):
             print("AUTENTIFICACION ERROR")
             return "central|ERROR"
 
-    if peticion in ("AUTORIZACION", "ESTADO"):
-        if cp_id not in CPs_IDX:
+    if peticion in ("AUTORIZACION", "ESTADO", "FIN"):
+        if cp_id not in CPS_IDX:
             print(f"{peticion}: ERROR (CP '{cp_id}' no encontrado en Central)")
             return "central|ERROR"
         else:
@@ -195,19 +203,35 @@ def cargarClientes(fich):
 # Tarea 1
 def cargarCPs(fich):
     """
-    Lee un fichero de puntos de recarga con formato fijo:
-        CP01, Aparcamiento Norte
-        CP02, Parking Sur
+    Lee un fichero de puntos de recarga con formato:
+        CP01, Aparcamiento Norte, IDLE
+        CP02, Parking Sur, OUT OF ORDER
 
-    Devuelve: lista[str] con los identificadores de los CPs.
+    Devuelve:
+        cps -> lista de diccionarios con id, loc, estado
+        idx -> lista de identificadores (para CPs_IDX)
     """
-    cps_idx = []
-    with open(fich, "r", encoding="utf-8") as f:
-        for line in f:
-            if line.strip():  # Ignora líneas vacías
-                cp_id, _ = line.strip().split(", ", 1)
-                cps_idx.append(cp_id.strip())
-    return cps_idx
+    cps = []
+    idx = []
+
+    try:
+        with open(fich, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    parts = [p.strip() for p in line.split(",")]
+                    cp_id, loc, estado = parts[0], parts[1], parts[2]
+                    cps.append({
+                        "id": cp_id,
+                        "loc": loc,
+                        "estado": estado.upper()
+                    })
+                    idx.append(cp_id)
+    except FileNotFoundError:
+        print(f"[AVISO] No se encontró el fichero {fich}.")
+    except Exception as e:
+        print(f"[ERROR] al cargar {fich}: {e}")
+
+    return cps, idx
 
 ######################### ENGINE #########################
 
@@ -239,7 +263,7 @@ def attendToEngine(producer, msg_txt: str):
         segundos = int(respuesta)
         horas = segundos / 3600
         precio = horas * PRICE_PER_KWH
-        resp = f"central|TIEMPO={segundos}s;PRECIO={precio:.2f}€|{driver_id}"
+        resp = f"TIEMPO={segundos}s;PRECIO={precio:.2f}€|{driver_id}"
         replyToDriver(producer, resp)
         return
 
@@ -307,10 +331,6 @@ def receive_messages(consumer, producer):
             print(f"[CENTRAL] Formato inválido: {text}")
             continue
 
-        if peticion == FIN:
-            print(f"[CENTRAL] Driver {driver_id} cerró sesión.")
-            continue
-
         print(f"[CENTRAL] Recibido: {text}")
         print(f"  --> remitente: {remitente}, Driver: {driver_id}, CP: {cp_id}")
 
@@ -321,6 +341,8 @@ def receive_messages(consumer, producer):
         elif remitente == "engine":
             # el engine habla como "engine|...", pero tu attendToEngine
             # quiere "driver|..." -> lo adaptamos aquí sin cambiar tu lógica
+            if peticion == FIN:
+                print(f"[CENTRAL] Driver {driver_id} cerró sesión.")
             msg_txt = f"driver|{peticion}|{driver_id}"
             attendToEngine(producer, msg_txt)
 
@@ -425,7 +447,7 @@ def main():
     t_kafka = threading.Thread(target=run_kafka_loop, args=(bootstrap,), daemon=True)
     t_kafka.start()
     
-    CPs_IDX = cargarCPs(CPS_FILE) 
+    CPS, CPS_IDX = cargarCPs(CPS_FILE)
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # opcional pero útil

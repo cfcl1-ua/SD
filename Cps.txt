@@ -1,11 +1,10 @@
-CP01, Parking Norte
-CP02, Parking Sur
-CP03, Parking Centro Comercial
-CP04, Aparcamiento Universidad
-CP05, Garaje Subterráneo A
-CP06, Estación de Autobuses
-CP07, Centro Deportivo Municipal
-CP08, Aeropuerto Terminal 2
-CP09, Calle Mayor 45
-CP10, Polígono Industrial Oeste2, san vicente, IDLE
-2, san vicente, ERROR
+CP01, Parking Norte, IDLE
+CP02, Parking Sur, IDLE
+CP03, Parking Centro Comercial, IDLE
+CP04, Aparcamiento Universidad, IDLE
+CP05, Garaje Subterráneo A, IDLE
+CP06, Estación de Autobuses, IDLE
+CP07, Centro Deportivo Municipal, IDLE
+CP08, Aeropuerto Terminal 2, IDLE
+CP09, Calle Mayor 45, IDLE
+CP10, Polígono Industrial Oeste2, IDLE
