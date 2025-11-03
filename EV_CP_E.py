@@ -2,7 +2,6 @@ import socket
 import threading
 import time
 from kafka import KafkaProducer, KafkaConsumer
-from json import loads
 import json
 
 HEADER = 64
@@ -12,20 +11,22 @@ FORMAT = 'utf-8'
 FIN = "FIN"
 MAX_CONEXIONES = 3
 TOPIC_ENGINE = "central-to-engine"
-TOPIC_CENTRAL = "engine-to-central"
-
+TOPIC_CENTRAL = "engine-to-central"      
 
 #Al conectarse correctamente empieza a enviar periodicamente el estado al monitor
 def handle_client(conn, addr, engine):
-    print(f"MONITOR connected.")
+    print("MONITOR connected.")
 
     while True:
         msg_length = conn.recv(HEADER).decode(FORMAT)
         if msg_length:
             msg_length = int(msg_length)
             msg = conn.recv(msg_length).decode(FORMAT)
+            parts=msg.split("|")
+            engine.id=parts[1]
+            stat=parts[2]
             #Recibe un primer mensaje de confirmacion
-            if msg == "ok":
+            if stat == "ok":
                 #Se avisa al monitor del estado y si es un error el engine lo reporta y se desconecta del monitor
                 if engine.status!="ERROR":
                     conn.send(f"ENGINE|{engine.status}".encode(FORMAT))
@@ -39,9 +40,9 @@ def handle_client(conn, addr, engine):
     engine.conexiones_activas -= 1
     
 class Engine:
-    def __init__(self, SERVER, PORT_SERVER):
-        self.SERVER = SERVER
-        self.PORT_SERVER = PORT_SERVER
+    def __init__(self, server_broker, port_server):
+        self.SERVER = server_broker
+        self.PORT_SERVER = port_server
         self.HOST = 'localhost'
         self.PORT = PORT
         self.ADDR = (self.HOST, self.PORT)
@@ -49,13 +50,14 @@ class Engine:
         self.status = "IDLE"    # OFFLINE, IDLE, CHARGING, ERROR
         self.tiempo=None
         self.conexiones=0
+        self.id=None
         
         self.consumer = KafkaConsumer(
         TOPIC_ENGINE,
         bootstrap_servers=[self.ADDR_SERVER],
         auto_offset_reset='earliest',
         enable_auto_commit=True,
-        group_id='grupo-consumidor',
+        group_id='cliente_A',
         value_deserializer=lambda v: v.decode(FORMAT)           # Enable auto-commit of offsets
         )
         
@@ -89,7 +91,6 @@ class Engine:
                 print("OOppsss... DEMASIADAS CONEXIONES. ESPERANDO A QUE ALGUIEN SE VAYA")
                 conn.send("OOppsss... DEMASIADAS CONEXIONES. Tendrás que esperar a que alguien se vaya".encode(FORMAT))
                 conn.close()
-                CONEX_ACTUALES = threading.active_count()-1
     
     def boton_ko(self):
         print("Boton KO presionado")
@@ -103,28 +104,35 @@ class Engine:
             self.producer.close()
         self.status="ERROR"
     #Funcion que actuara como un enchufado para el driver
-    def enchufar(self):
-        if self.status == "IDLE":
-            self.status="CHARGING"
-            self.start_time=time.time()
-            print("Engine: Iniciando carga del coche...")
-        elif self.status == "ERROR" or self.status == "OFFLINE":
-            print("El punto de carga esta fuera de servicio")
+    def enchufar(self, cp_id):
+        if cp_id == self.id:
+            if self.status == "IDLE":
+                self.status="CHARGING"
+                self.start_time=time.time()
+                print("Engine: Iniciando carga del coche...")
+            elif self.status == "ERROR" or self.status == "OFFLINE":
+                print("El punto de carga esta fuera de servicio")
+            else:
+                print("El punto de carga ya esta en uso.")
         else:
-            print("El punto de carga ya esta en uso.")
+            print("nol")
     
     #Funcion que actuara como desenchufado del driver
-    def desenchufar(self, driver_id):
-        if self.status == "CHARGING":
-            self.status="IDLE"
-            time_end=time.time() - self.start_time
-            print(f"Engine: Carga detenida. Tiempo: {time_end:.2f} seg")
-            #engine|TIMPO|ID_DRIVER
-            mensaje=("engine|{time_end:.2f}|{driver_id}")
-            self.producer.send(TOPIC_CENTRAL, value=mensaje)
-            print("Respesta enviada")
-            time.sleep(1)
-    
+    def desenchufar(self, driver_id, cp_id):
+        if cp_id==self.id:
+            if self.status == "CHARGING":
+                self.status="IDLE"
+                time_end=time.time() - self.start_time
+                print(f"Engine: Carga detenida. Tiempo: {time_end:.2f} seg")
+                #engine|TIMPO|ID_DRIVER
+                mensaje=("engine|{time_end:.2f}|{driver_id}")
+                self.producer.send(TOPIC_CENTRAL, value=mensaje)
+                producer.flush()
+                print("Respesta enviada")
+                time.sleep(1)
+            else:
+                print("No esta conectado")
+        
     def menu_driver(self):
         print("ID del driver:\n")
         driver=input()
@@ -139,9 +147,9 @@ class Engine:
             opc=input()
             
             match int(opc):
-                case 1: self.enchufar()
-                case 2: self.desenchufar(driver)
-                case 3: self.estado_driver(driver)
+                case 1: self.enchufar(self.id)
+                case 2: self.desenchufar(driver, self.id)
+                case 3: self.estado_driver(driver, self.id)
                 case 4: break 
         
         
@@ -161,20 +169,25 @@ class Engine:
             print("2. Boton KO")
             #Sale del CP
             print("3. Salir")
-            opc=input()
-            if int(opc) == 3:
-                print("Saliendo del programa")
-                break
-            else:
-                self.opciones(opc)
+            opc=input("Eliga una opcion: ")
+            try:
+                if int(opc) == 3:
+                    print("Saliendo del programa")
+                    break
+                else:
+                    self.opciones(opc)
+            except ValueError:
+                print("Entrada inválida. Por favor ingresa un número.")
 
 
     #Envia el estado a central
-    def estado_driver(self, driver_id):
+    def estado_driver(self, driver_id, cp_id):
         #engine|ESTADO|DRIVER_ID
-        mensaje=f"engine|{self.status}|{driver_id}"
-        self.producer.send(TOPIC_CENTRAL, value=mensaje)
-        
+        if cp_id==self.id:
+            mensaje=f"engine|{self.status}|{driver_id}"
+            self.producer.send(TOPIC_CENTRAL, value=mensaje)
+            
+            
 
     # Funcion que sera la encargada de satisfacer los servicios enviados por la central desde engine
     def servicios(self):
@@ -185,18 +198,18 @@ class Engine:
             cp_id     = parts[2]
             driver_id = parts[3]
             print("[Mensaje recibido de central]")
-            print(f"[Mensaje del driver: {driver_id}]")
+            print(f"[Mensaje del driver: {text}]")
             #Me dice de enchufar central
             if peticion == "AUTORIZACION":
-                self.enchufar()
+                self.enchufar(cp_id)
             #Me dice que lo desenchufe del driver 
             elif peticion == "FIN":
-                self.desenchufar(driver_id)
-            '''
+                self.desenchufar(driver_id, cp_id)
+        
             elif peticion == "ESTADO":
-                self.estado_driver(driver_id)
+                self.estado_driver(driver_id, cp_id)
             else:
-            '''    
+                print("[Peticion no identificada]")
     
                 
                 

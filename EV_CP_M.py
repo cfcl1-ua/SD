@@ -32,6 +32,7 @@ class Monitor:
         self.addr_engine=(ENGINE, ENGINE_PORT)
         self.sock=None
         
+        
     #conecta con central
     def conectar_central(self):
         print("[DEBUG] Creando socket del Monitor...")
@@ -80,7 +81,7 @@ class Monitor:
             print ("Conexion establecida con engine")
             while True:
                 
-                msg_stat="ok"
+                msg_stat=f"ENGINE|{self.ID}|ok"
                 send(msg_stat, client_engine)
                 status=client_engine.recv(2048).decode(FORMAT)
                 time.sleep(1)
@@ -110,7 +111,7 @@ class Monitor:
         #Si el monitor no logra conectarse al engine se interpretara que el engine esta desconectado
         except socket.timeout:
             print("No se pudo conectar al Engine.")
-            msg_stat="monitor|ESTADO|{self.ID}|OFFLINE"
+            msg_stat=f"monitor|ESTADO|{self.ID}|OFFLINE"
             send(msg_stat, self.sock)
              
         except ConnectionRefusedError:
