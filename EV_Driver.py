@@ -10,6 +10,8 @@ DELAYS = 4  # segundos entre solicitudes
 TOPIC_DTC = "driver-to-central"       # Drivers -> Central
 TOPIC_CTD = "central-to-driver"       # Central -> Drivers
 
+
+
 def menu():
     opciones = {"1": "AUTENTIFICACION", "2": "AUTORIZACION", "3": "ESTADO", "4": "FIN"}
     while True:
@@ -78,10 +80,11 @@ def receiveAnswers(bootstrap_server: str, driver_id: str):
     print(f"[DRIVER] Escuchando respuestas en '{TOPIC_CTD}'…")
     for rec in consumer:
         text = rec.value or ""
+        print(text)
         parts = text.split("|", 2)
-        if len(parts) >= 2 and parts[1] == driver_id:
-            mensaje = parts[2] if len(parts) >= 3 else ""
-            print(f"[CENTRAL → {driver_id}]: {mensaje}")
+        if len(parts) >= 3 and parts[1] == driver_id:
+            mensaje = parts[2] 
+            print(f"[CENTRAL --> {driver_id}]: {mensaje}")
 
 def main():
     print("****** EV_Driver ******")
@@ -98,6 +101,8 @@ def main():
     sendRequests(bootstrap_server, driver_id)
     print("Cerrando Driver…")
     time.sleep(1)
+    
+    
 
 if __name__ == "__main__":
     main()
