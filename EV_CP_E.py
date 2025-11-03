@@ -37,7 +37,7 @@ def handle_client(conn, addr, engine):
     print("Se rompio la conexion")
     conn.shutdown(socket.SHUT_RDWR)
     conn.close()
-    engine.conexiones_activas -= 1
+    engine.conexiones -= 1
     
 class Engine:
     def __init__(self, server_broker, port_server):
@@ -51,6 +51,7 @@ class Engine:
         self.tiempo=None
         self.conexiones=0
         self.id=None
+        self.driver=None
         
         self.consumer = KafkaConsumer(
         TOPIC_ENGINE,
@@ -98,40 +99,43 @@ class Engine:
             time_end=time.time() - self.start_time
             print(f"Engine: Carga detenida. Tiempo: {time_end:.2f} seg")
             start_time=None
-            self.producer.send(TOPIC_CENTRAL, value=time_end)
+            mensaje=(f"engine|{time_end:.2f}|{self.driver}")
+            self.producer.send(TOPIC_CENTRAL, value=mensaje)
+            self.producer.flush(1)
             time.sleep(2)
             self.consumer.close()
             self.producer.close()
         self.status="ERROR"
     #Funcion que actuara como un enchufado para el driver
-    def enchufar(self, cp_id):
-        if cp_id == self.id:
-            if self.status == "IDLE":
-                self.status="CHARGING"
-                self.start_time=time.time()
-                print("Engine: Iniciando carga del coche...")
-            elif self.status == "ERROR" or self.status == "OFFLINE":
-                print("El punto de carga esta fuera de servicio")
-            else:
-                print("El punto de carga ya esta en uso.")
+    def enchufar(self, cp_id, driver_id):
+        if cp_id == self.id and self.driver==driver_id and self.status == "IDLE":
+            self.driver=driver_id
+            self.status="CHARGING"
+            self.start_time=time.time()
+            print("Engine: Iniciando carga del coche...")
+        elif self.status == "ERROR" or self.status == "OFFLINE":
+            print("El punto de carga esta fuera de servicio")
         else:
-            print("nol")
+            print("El punto de carga ya esta en uso.")
     
     #Funcion que actuara como desenchufado del driver
     def desenchufar(self, driver_id, cp_id):
         if cp_id==self.id:
-            if self.status == "CHARGING":
+            if self.status == "CHARGING" and self.driver == driver_id:
                 self.status="IDLE"
                 time_end=time.time() - self.start_time
                 print(f"Engine: Carga detenida. Tiempo: {time_end:.2f} seg")
                 #engine|TIMPO|ID_DRIVER
-                mensaje=("engine|{time_end:.2f}|{driver_id}")
+                mensaje=(f"engine|{time_end:.2f}|{driver_id}")
                 self.producer.send(TOPIC_CENTRAL, value=mensaje)
-                producer.flush()
+                self.producer.flush(1)
                 print("Respesta enviada")
                 time.sleep(1)
+            elif self.status=="IDLE":
+                print("El punto de carga no esta conectado a ningun dispositivo")
             else:
                 print("No esta conectado")
+                
         
     def menu_driver(self):
         print("ID del driver:\n")
@@ -147,7 +151,7 @@ class Engine:
             opc=input()
             
             match int(opc):
-                case 1: self.enchufar(self.id)
+                case 1: self.enchufar(driver, self.id)
                 case 2: self.desenchufar(driver, self.id)
                 case 3: self.estado_driver(driver, self.id)
                 case 4: break 
@@ -157,6 +161,7 @@ class Engine:
         match int(opc):
             case 1: self.menu_driver()
             case 2: self.boton_ko()
+            case 3: self.desenchufar(self.driver, self.id)
             case _: print("Mensaje no  valido")
             
     def menu(self):
@@ -167,11 +172,13 @@ class Engine:
             print("1. Peticion manualmente")
             #Boton ko
             print("2. Boton KO")
+            #Cortar el grifo del driver
+            print("3. Terminar suministro")
             #Sale del CP
-            print("3. Salir")
-            opc=input("Eliga una opcion: ")
+            print("4. Salir")
+            opc=input("Elija una opcion: ")
             try:
-                if int(opc) == 3:
+                if int(opc) == 4:
                     print("Saliendo del programa")
                     break
                 else:
@@ -186,30 +193,36 @@ class Engine:
         if cp_id==self.id:
             mensaje=f"engine|{self.status}|{driver_id}"
             self.producer.send(TOPIC_CENTRAL, value=mensaje)
-            
+            self.producer.flush(1)
             
 
     # Funcion que sera la encargada de satisfacer los servicios enviados por la central desde engine
     def servicios(self):
-        for message in self.consumer:
-            text = message.value or ""
-            parts = text.split("|")
-            peticion = parts[1]
-            cp_id     = parts[2]
-            driver_id = parts[3]
-            print("[Mensaje recibido de central]")
-            print(f"[Mensaje del driver: {text}]")
-            #Me dice de enchufar central
-            if peticion == "AUTORIZACION":
-                self.enchufar(cp_id)
-            #Me dice que lo desenchufe del driver 
-            elif peticion == "FIN":
-                self.desenchufar(driver_id, cp_id)
-        
-            elif peticion == "ESTADO":
-                self.estado_driver(driver_id, cp_id)
-            else:
-                print("[Peticion no identificada]")
+        try:
+            for message in self.consumer:
+                text = message.value or ""
+                parts = text.split("|")
+                peticion = parts[1]
+                cp_id     = parts[2]
+                driver_id = parts[3]
+                self.driver=parts[3]
+                print("[Mensaje recibido de central]")
+                print(f"[Mensaje del driver: {text}]")
+                #Me dice de enchufar central
+                if peticion == "AUTORIZACION":
+                    self.enchufar(cp_id, driver_id)
+                #Me dice que lo desenchufe del driver 
+                elif peticion == "FIN":
+                    self.desenchufar(driver_id, cp_id)
+            
+                elif peticion == "ESTADO":
+                    self.estado_driver(driver_id, cp_id)
+                elif peticion == "APAGAR":
+                    self.boton_ko
+                else:
+                    print("[Peticion no identificada]")
+        except AssertionError:
+            print("El engine se desactivo")
     
                 
                 
