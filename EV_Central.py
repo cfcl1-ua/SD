@@ -16,12 +16,14 @@ CLIENTES_FILE = "Clientes.txt"
 CPS_FILE = "Cps.txt"
 CPs_IDX = []
 CUSTOMER_IDX = []
+CONEX_ACTIVAS = 0
 
 # ================== TOPICS (alineados con EV_Driver) ==================
 TOPIC_DTC = "driver-to-central"       # Drivers -> Central
 TOPIC_CTD = "central-to-driver"       # Central -> Drivers
 TOPIC_ENGINE = "central-to-engine"    # Central -> Engine (si existe un Engine)
 TOPIC_REQUESTS = TOPIC_DTC            # Central escucha peticiones del driver
+TOPIC_CENTRAL="engine-to-central"
    
 ########################## MONITOR ######################
             
@@ -123,8 +125,9 @@ def replyToEngine(producer, peticion, cp_id, driver_id):
 
 def replyToDriver(producer, texto):
     # Mensaje: central|RESPUESTA
+    print("FEDERICO")
     payload = f"central|{texto}"
-    producer.send(TOPIC_DRIVER, payload)
+    producer.send(TOPIC_CTD, payload)
     producer.flush(1)
 
 def searchCustomer(id_cliente):
@@ -176,18 +179,17 @@ def attendToDriver(peticion, cp_id, driver_id, producer=None):
 def cargarClientes(fich):
     """
     Lee un fichero de clientes con formato:
-        ID_CLIENTE, otro_dato
+        ID_CLIENTE
 
     Devuelve: lista[str] con los campos en orden plano:
-        [id1, total1, id2, total2, ...]
+        [id1, id2, ...]
     """
     clientes = []
     with open(fich, "r", encoding=FORMAT) as f:
         for line in f:
             if line.strip():  # Ignora líneas vacías
-                cli_id, total_gastado = line.strip().split(",", 1)
-                clientes.append(cli_id.strip())
-                clientes.append(total_gastado.strip())
+                cli_id = line.strip()
+                clientes.append(cli_id)
     return clientes
 
 # Tarea 1
@@ -242,7 +244,7 @@ def attendToEngine(producer, msg_txt: str):
         return
 
     # 2) Caso ESTADO → si no es número, lo tratamos como texto de estado
-    resp = f"central|ESTADO={respuesta}|{driver_id}"
+    resp = f"central|{respuesta}|{driver_id}"
     replyToDriver(producer, resp)
     return
 
@@ -269,7 +271,7 @@ def create_producer(bootstrap):
 def create_consumer(bootstrap):
     try:
         consumer = KafkaConsumer(
-            TOPIC_REQUESTS,
+            TOPIC_REQUESTS, TOPIC_CENTRAL,
             bootstrap_servers=[bootstrap],
             value_deserializer=lambda m: m.decode(FORMAT),
             auto_offset_reset="earliest",
@@ -294,7 +296,7 @@ def receive_messages(consumer, producer):
             remitente = parts[0].lower()
             peticion  = parts[1]
             driver_id = parts[2]
-            cp_id     = ""   # para que exista la variable al imprimir
+            cp_id     = ""
         elif len(parts) == 4:
             # driver|PETICION|CP_ID|DRIVER_ID   o   engine|RESPUESTA|CP_ID|DRIVER_ID
             remitente = parts[0].lower()
@@ -314,7 +316,6 @@ def receive_messages(consumer, producer):
 
         if remitente == "driver":
             # tu attendToDriver ahora recibe también el producer
-            print("CARLOS")
             attendToDriver(peticion, cp_id, driver_id, producer)
 
         elif remitente == "engine":
@@ -382,13 +383,13 @@ def handle_client(conn, addr):
     conn.close()    
 
 def start(server):
+    global CONEX_ACTIVAS
     server.listen()
     print(f"[LISTENING] Servidor a la escucha en {SERVER}")
-    CONEX_ACTIVAS = threading.active_count()-1
-    print(CONEX_ACTIVAS)
+    print(f"[CONEXIONES ACTIVAS] {CONEX_ACTIVAS}")
     while True:
         conn, addr = server.accept()
-        CONEX_ACTIVAS = threading.active_count()
+        CONEX_ACTIVAS += 1
         if (CONEX_ACTIVAS <= MAX_CONEXIONES):
             msg = "1"
             conn.send(msg.encode(FORMAT)) # Enviamos un 1 para informar que nos conectamos correctamente
@@ -400,7 +401,7 @@ def start(server):
             print("OOppsss... DEMASIADAS CONEXIONES. ESPERANDO A QUE ALGUIEN SE VAYA")
             conn.send("OOppsss... DEMASIADAS CONEXIONES. Tendrás que esperar a que alguien se vaya".encode(FORMAT))
             conn.close()
-            CONEX_ACTUALES = threading.active_count()-1
+            #CONEX_ACTUALES = threading.active_count()-1
 
 ######################### MAIN ##########################
 
