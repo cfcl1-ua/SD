@@ -37,7 +37,7 @@ def sendRequests(bootstrap_server: str, driver_id: str):
         value_serializer=lambda v: v.encode(FORMAT)
     )
     print(f"[DRIVER] Conectado a Kafka en {bootstrap_server}")
-
+    cp_id = "None"
     while True:
         tipo = menu()
 
@@ -47,8 +47,6 @@ def sendRequests(bootstrap_server: str, driver_id: str):
             if not cp_id:
                 print("ERROR: CP vacío. Cancelo envío.")
                 continue
-        else:
-            cp_id = "None"
 
         msg = f"DRIVER|{tipo}|{cp_id}|{driver_id}"
         producer.send(TOPIC_DTC, msg)

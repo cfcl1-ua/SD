@@ -130,7 +130,7 @@ class Engine:
                 time_end=time.time() - self.start_time
                 print(f"Engine: Carga detenida. Tiempo: {time_end:.2f} seg")
                 #engine|TIMPO|ID_DRIVER
-                mensaje=(f"engine|{time_end:.2f}|{driver_id}")
+                mensaje=(f"engine|{time_end:.2f}|{cp_id}|{driver_id}")
                 self.producer.send(TOPIC_CENTRAL, value=mensaje)
                 self.producer.flush(1)
                 print("Respesta enviada")
@@ -156,7 +156,7 @@ class Engine:
             opc=input()
             
             match int(opc):
-                case 1: self.enchufar(driver, self.id)
+                case 1: self.enchufar(self.id, driver)
                 case 2: self.desenchufar(driver, self.id)
                 case 3: self.estado_driver(driver, self.id)
                 case 4: break 
@@ -197,7 +197,8 @@ class Engine:
     def estado_driver(self, driver_id, cp_id):
         #engine|ESTADO|DRIVER_ID
         if cp_id==self.id:
-            mensaje=f"engine|{self.status}|{driver_id}|{cp_id}"
+            mensaje=f"engine|{self.status}|{cp_id}|{driver_id}"
+            print(mensaje)
             self.producer.send(TOPIC_CENTRAL, value=mensaje)
             
 
@@ -208,27 +209,28 @@ class Engine:
                 time.sleep(0.1)
             for message in self.consumer:
                 text = message.value or ""
-                print(text)
                 parts = text.split("|")
-                peticion = parts[1]
-                cp_id     = parts[2]
-                driver_id = parts[3]
-                self.driver=parts[3]
-                print("[Mensaje recibido de central]")
-                print(f"[Mensaje del driver: {text}]")
-                #Me dice de enchufar central
-                if peticion == "AUTORIZACION":
-                    self.enchufar(cp_id, driver_id)
-                #Me dice que lo desenchufe del driver 
-                elif peticion == "FIN":
-                    self.desenchufar(driver_id, cp_id)
-            
-                elif peticion == "ESTADO":
-                    self.estado_driver(driver_id, cp_id)
-                elif peticion == "APAGAR":
-                    self.boton_ko
-                else:
-                    print("[Peticion no identificada]")
+                if len(parts) > 3:
+                    peticion = parts[1]
+                    cp_id     = parts[2]
+                    driver_id = parts[3]
+                    self.driver=parts[3]
+                    print("[Mensaje recibido de central]")
+                    print(f"[Mensaje del driver: {text}]")
+                    #Me dice de enchufar central
+                    if peticion == "AUTORIZACION":
+                        self.enchufar(cp_id, driver_id)
+                    #Me dice que lo desenchufe del driver 
+                    elif peticion == "FIN":
+                        self.desenchufar(driver_id, cp_id)
+                
+                    elif peticion == "ESTADO":
+                        self.estado_driver(driver_id, cp_id)
+                    elif peticion == "APAGAR":
+                        self.boton_ko()
+                    else:
+                        print("[Peticion no identificada]")
+                        
         except AssertionError:
             print("El engine se desactivo")
     
