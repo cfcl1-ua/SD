@@ -5,12 +5,9 @@ from kafka import KafkaProducer, KafkaConsumer
 import json
 
 HEADER = 64
-PORT = 8080
-SERVER = socket.gethostbyname(socket.gethostname())
 FORMAT = 'utf-8'
 FIN = "FIN"
 MAX_CONEXIONES = 3
-TOPIC_ENGINE = "central-to-engine"
 TOPIC_CENTRAL = "engine-to-central"      
 
 #Al conectarse correctamente empieza a enviar periodicamente el estado al monitor
@@ -24,7 +21,9 @@ def handle_client(conn, addr, engine):
             msg = conn.recv(msg_length).decode(FORMAT)
             parts=msg.split("|")
             engine.id=parts[1]
+            engine.consumidor()
             stat=parts[2]
+            
             #Recibe un primer mensaje de confirmacion
             if stat == "ok":
                 #Se avisa al monitor del estado y si es un error el engine lo reporta y se desconecta del monitor
@@ -40,11 +39,11 @@ def handle_client(conn, addr, engine):
     engine.conexiones -= 1
     
 class Engine:
-    def __init__(self, server_broker, port_server):
+    def __init__(self, server_broker, port_server, puerto):
         self.SERVER = server_broker
         self.PORT_SERVER = port_server
         self.HOST = 'localhost'
-        self.PORT = PORT
+        self.PORT = puerto
         self.ADDR = (self.HOST, self.PORT)
         self.ADDR_SERVER = f"{self.SERVER}:{self.PORT_SERVER}"
         self.status = "IDLE"    # OFFLINE, IDLE, CHARGING, ERROR
@@ -52,19 +51,22 @@ class Engine:
         self.conexiones=0
         self.id=None
         self.driver=None
+        self.consumer=None
+        self.producer = KafkaProducer(
+        bootstrap_servers=[self.ADDR_SERVER],
+        value_serializer=lambda v: v.encode(FORMAT)
+        )
         
+        
+    def consumidor(self):
+        topic=f"central-to-consumer-{self.id}"
         self.consumer = KafkaConsumer(
-        TOPIC_ENGINE,
+        topic,
         bootstrap_servers=[self.ADDR_SERVER],
         auto_offset_reset='earliest',
         enable_auto_commit=True,
         group_id='cliente_A',
-        value_deserializer=lambda v: v.decode(FORMAT)           # Enable auto-commit of offsets
-        )
-        
-        self.producer = KafkaProducer(
-        bootstrap_servers=[self.ADDR_SERVER],
-        value_serializer=lambda v: v.encode(FORMAT)
+        value_deserializer=lambda v: v.decode(FORMAT)   
         )
         
     def estado(self):
@@ -72,7 +74,7 @@ class Engine:
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.bind(self.ADDR)
         server.listen()
-        print(f"[LISTENING] Servidor a la escucha en {SERVER}")
+        print(f"[LISTENING] Servidor a la escucha en {self.HOST}")
         server.settimeout(10.0)
         while True:
             try:
@@ -106,6 +108,8 @@ class Engine:
             self.consumer.close()
             self.producer.close()
         self.status="ERROR"
+        
+
     #Funcion que actuara como un enchufado para el driver
     def enchufar(self, cp_id, driver_id):
         if cp_id == self.id and self.driver==driver_id and self.status == "IDLE":
@@ -140,6 +144,7 @@ class Engine:
     def menu_driver(self):
         print("ID del driver:\n")
         driver=input()
+        self.driver=driver
         while True:
             print("<<MENU CHARGING POINT>>")
             print("Elige una de las opciones:")
@@ -166,6 +171,7 @@ class Engine:
             
     def menu(self):
         while True:
+            self.driver=None
             print("<<MENU CHARGING POINT>>")
             print("Elige una de las opciones:")
             #Se introduce la id del driver para realizar las funciones
@@ -191,7 +197,7 @@ class Engine:
     def estado_driver(self, driver_id, cp_id):
         #engine|ESTADO|DRIVER_ID
         if cp_id==self.id:
-            mensaje=f"engine|{self.status}|{driver_id}"
+            mensaje=f"engine|{self.status}|{driver_id}|{cp_id}"
             self.producer.send(TOPIC_CENTRAL, value=mensaje)
             self.producer.flush(1)
             
@@ -199,6 +205,8 @@ class Engine:
     # Funcion que sera la encargada de satisfacer los servicios enviados por la central desde engine
     def servicios(self):
         try:
+            while self.consumer is None:
+                time.sleep(0.1)
             for message in self.consumer:
                 text = message.value or ""
                 parts = text.split("|")
