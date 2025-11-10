@@ -3,7 +3,7 @@ from kafka import KafkaProducer, KafkaConsumer
 import threading
 import sys
 from ChargingPoint import ChargingPoint
-from Interfaz import interfaz
+#from Interfaz import interfaz
 import time
 
 HEADER = 64
@@ -12,7 +12,7 @@ SERVER = "localhost"
 ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 FIN = "FIN"
-MAX_CONEXIONES = 2
+MAX_CONEXIONES = 5
 PRICE_PER_KWH = 0.28  # €/kWh
 CLIENTES_FILE = "Clientes.txt"
 CPS_FILE = "Cps.txt"
@@ -22,11 +22,8 @@ CUSTOMER_IDX = []
 CONEX_ACTIVAS = 0
 
 # ================== TOPICS (alineados con EV_Driver) ==================
-TOPIC_DTC = "driver-to-central"       # Drivers -> Central
-TOPIC_CTD = "central-to-driver"       # Central -> Drivers
-TOPIC_ENGINE = "central-to-engine"    # Central -> Engine (si existe un Engine)
-TOPIC_REQUESTS = TOPIC_DTC            # Central escucha peticiones del driver
-TOPIC_CENTRAL="engine-to-central"
+TOPIC_DTC = "driver-to-central"              
+TOPIC_ETC = "engine-to-central"
    
 ########################## MONITOR ######################
 
@@ -128,14 +125,16 @@ def searchCP(cp_id):
 
 def replyToEngine(producer, peticion, cp_id, driver_id):
     # Mensaje: central|PETICION|CP|DRIVER
+    topic_resp = topics_id(cp_id)
     payload = f"central|{peticion}|{cp_id}|{driver_id}"
-    producer.send(TOPIC_ENGINE, payload)
+    producer.send(topic_resp, payload)
     producer.flush(1)
 
-def replyToDriver(producer, texto):
+def replyToDriver(producer, driver_id, texto):
     # Mensaje: central|RESPUESTA
-    payload = f"{texto}"
-    producer.send(TOPIC_CTD, payload)
+    payload = f"central|{driver_id}|{texto}"
+    topic_resp = topics_id(driver_id)
+    producer.send(topic_resp, payload)
     producer.flush(1)
 
 def searchCustomer(id_cliente):
@@ -166,9 +165,13 @@ def attendToDriver(peticion, cp_id, driver_id, producer=None):
     if peticion == "AUTENTIFICACION":
         if addCustomer(driver_id):
             print("AUTENTIFICACION OK")
+            texto = "OK"
+            replyToDriver(producer, driver_id, texto)
             return "central|OK"
         else:
             print("AUTENTIFICACION ERROR")
+            texto = "ERROR"
+            replyToDriver(producer, driver_id, texto)
             return "central|ERROR"
 
     if peticion in ("AUTORIZACION", "ESTADO", "FIN"):
@@ -244,7 +247,7 @@ def attendToEngine(producer, msg_txt: str):
 
     Siempre reenvía con:
         "central|...|DRIVER_ID"
-    usando replyToDriver(producer, texto)
+    usando replyToDriver(producer, driver_id, texto)
     """
 
     parts = msg_txt.split("|")
@@ -274,6 +277,9 @@ def attendToEngine(producer, msg_txt: str):
 
 ######################### KAFKA ##########################
 
+def topics_id(id):
+    return f"central-to-consumer-{id}"
+
 def create_producer(bootstrap):
     """
     Crea un productor Kafka con la configuración básica.
@@ -295,7 +301,7 @@ def create_producer(bootstrap):
 def create_consumer(bootstrap):
     try:
         consumer = KafkaConsumer(
-            TOPIC_REQUESTS, TOPIC_CENTRAL,
+            TOPIC_DTC, TOPIC_ETC,
             bootstrap_servers=[bootstrap],
             value_deserializer=lambda m: m.decode(FORMAT),
             auto_offset_reset="earliest",
@@ -303,7 +309,7 @@ def create_consumer(bootstrap):
             group_id="central-group",
             client_id="central-1",
         )
-        print(f"[CENTRAL] Conectado a {bootstrap}, escuchando '{TOPIC_REQUESTS}'…")
+        print(f"[CENTRAL] Conectado a {bootstrap}, escuchando '{TOPIC_DTC}'…")
         return consumer
     except Exception as e:
         print(f"[CENTRAL] No puedo conectar con el broker '{bootstrap}': {e}")
