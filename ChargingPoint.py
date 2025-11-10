@@ -17,7 +17,7 @@ class ChargingPoint:
         self.supplying = False     # Si está suministrando energía
         self.status = "OFFLINE"    # OFFLINE, IDLE, CHARGING, ERROR
         self.Monitor=Monitor(IP, PORT, IP_ENGINE, PORT_ENGINE, cp_id, location)
-        self.Engine=Engine(IP_BROKER, PORT_BROKER)
+        self.Engine=Engine(IP_BROKER, PORT_BROKER, PORT_ENGINE)
 
     # --- Estados básicos ---
     def activate(self):
