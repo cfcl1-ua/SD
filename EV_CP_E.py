@@ -199,7 +199,6 @@ class Engine:
         if cp_id==self.id:
             mensaje=f"engine|{self.status}|{driver_id}|{cp_id}"
             self.producer.send(TOPIC_CENTRAL, value=mensaje)
-            self.producer.flush(1)
             
 
     # Funcion que sera la encargada de satisfacer los servicios enviados por la central desde engine
@@ -209,6 +208,7 @@ class Engine:
                 time.sleep(0.1)
             for message in self.consumer:
                 text = message.value or ""
+                print(text)
                 parts = text.split("|")
                 peticion = parts[1]
                 cp_id     = parts[2]
