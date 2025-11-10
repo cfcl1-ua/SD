@@ -8,7 +8,6 @@ DELAYS = 4  # segundos entre solicitudes
 
 # TOPICS globales (iguales para todos)
 TOPIC_DTC = "driver-to-central"       # Drivers -> Central
-TOPIC_CTD = "central-to-driver"       # Central -> Drivers
 
 
 
@@ -64,20 +63,30 @@ def sendRequests(bootstrap_server: str, driver_id: str):
 
     producer.close()
 
+def topics_id(id):
+    return f"central-to-consumer-{id}"
+
+
+def topic_respuestas_driver(driver_id):
+    return f"central-to-consumer-{driver_id}"
+
+
 def receiveAnswers(bootstrap_server: str, driver_id: str):
     """
-    Escucha respuestas de la Central en TOPIC_CTD.
+    Escucha respuestas de la Central en topic_respuestas_driver(driver_id).
     Formato esperado: RESPUESTA|<DRIVER_ID>|<MENSAJE>
     """
+    topic_resp = topic_respuestas_driver(driver_id)
+    
     consumer = KafkaConsumer(
-        TOPIC_CTD,
+        topic_resp,
         bootstrap_servers=[bootstrap_server],
         value_deserializer=lambda m: m.decode(FORMAT),
         auto_offset_reset="latest",
         enable_auto_commit=True,
-        group_id="drivers-group",  # grupo común de drivers
+        group_id=f"driver-{driver_id}",  # grupo común de drivers
     )
-    print(f"[DRIVER] Escuchando respuestas en '{TOPIC_CTD}'…")
+    print(f"[DRIVER] Escuchando respuestas en '{topic_resp}'…")
     for rec in consumer:
         text = rec.value or ""
         print(text)
