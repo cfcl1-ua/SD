@@ -32,10 +32,15 @@ def sendRequests(bootstrap_server: str, driver_id: str):
       ESTADO          -> DRIVER|ESTADO|<CP_ID>|<DRIVER_ID>
       FIN             -> DRIVER|FIN|NA|<DRIVER_ID>
     """
-    producer = KafkaProducer(
-        bootstrap_servers=[bootstrap_server],
-        value_serializer=lambda v: v.encode(FORMAT)
-    )
+    try:
+        producer = KafkaProducer(
+            bootstrap_servers=[bootstrap_server],
+            value_serializer=lambda v: v.encode(FORMAT)
+        )
+    except NoBrokersAvailable:
+        print("❌ Error: No se pudo conectar a la central Kafka. Verifica que esté encendida.")
+        sys.exit(1)
+        
     print(f"[DRIVER] Conectado a Kafka en {bootstrap_server}")
     cp_id = "None"
     while True:
