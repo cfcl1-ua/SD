@@ -130,9 +130,9 @@ def replyToEngine(producer, peticion, cp_id, driver_id):
     producer.send(topic_resp, payload)
     producer.flush(1)
 
-def replyToDriver(producer, driver_id, texto):
+def replyToDriver(producer, respuesta, cp_id, driver_id):
     # Mensaje: central|RESPUESTA
-    payload = f"central|{driver_id}|{texto}"
+    payload = f"central|{respuesta}|{cp_id}|{driver_id}"
     topic_resp = topics_id(driver_id)
     producer.send(topic_resp, payload)
     producer.flush(1)
@@ -238,7 +238,7 @@ def cargarCPs(fich):
 
 ######################### ENGINE #########################
 
-def attendToEngine(producer, msg_txt: str):
+def attendToEngine(producer,respuesta, cp_id, driver_id):
     """
     Procesa una respuesta que viene del Engine (por Kafka) y la reenvía al driver.
     Formatos esperados:
@@ -249,30 +249,18 @@ def attendToEngine(producer, msg_txt: str):
         "central|...|DRIVER_ID"
     usando replyToDriver(producer, driver_id, texto)
     """
-
-    parts = msg_txt.split("|")
-
-    # Mensaje mínimo: driver|respuesta|DRIVER_ID
-    if len(parts) != 3:
-        replyToDriver(producer, "central|ERROR")
-        return
-
-    origen = parts[0]
-    respuesta = parts[1]
-    driver_id = parts[2]
-
+    
     # 1) Caso TIEMPO --> si la respuesta es un número entero
     if respuesta.isdigit():
         segundos = int(respuesta)
         horas = segundos / 3600
         precio = horas * PRICE_PER_KWH
-        resp = f"TIEMPO={segundos}s;PRECIO={precio:.2f}€|{driver_id}"
-        replyToDriver(producer, resp)
+        resp = f"precio:.2f"
+        replyToDriver(producer, resp, cp_id, driver_id)
         return
 
     # 2) Caso ESTADO → si no es número, lo tratamos como texto de estado
-    resp = f"central|{respuesta}|{driver_id}"
-    replyToDriver(producer, resp)
+    replyToDriver(producer, respuesta, cp_id, driver_id)
     return
 
 ######################### KAFKA ##########################
@@ -320,22 +308,12 @@ def receive_messages(consumer, producer):
     for msg in consumer:
         text = msg.value or ""
         parts = text.split("|")
-
-        if len(parts) == 3:
-            # driver|PETICION|DRIVER_ID
-            remitente = parts[0].lower()
-            peticion  = parts[1]
-            driver_id = parts[2]
-            cp_id     = ""
-        elif len(parts) == 4:
-            # driver|PETICION|CP_ID|DRIVER_ID   o   engine|RESPUESTA|CP_ID|DRIVER_ID
-            remitente = parts[0].lower()
-            peticion  = parts[1]
-            cp_id     = parts[2]
-            driver_id = parts[3]
-        else:
-            print(f"[CENTRAL] Formato inválido: {text}")
-            continue
+    
+        # driver|PETICION|CP_ID|DRIVER_ID   o   engine|RESPUESTA|CP_ID|DRIVER_ID
+        remitente = parts[0].lower()
+        peticion  = parts[1]
+        cp_id     = parts[2]
+        driver_id = parts[3]
 
         print(f"[CENTRAL] Recibido: {text}")
         print(f"  --> remitente: {remitente}, Driver: {driver_id}, CP: {cp_id}")
@@ -349,8 +327,7 @@ def receive_messages(consumer, producer):
             # quiere "driver|..." -> lo adaptamos aquí sin cambiar tu lógica
             if peticion == FIN:
                 print(f"[CENTRAL] Driver {driver_id} cerró sesión.")
-            msg_txt = f"driver|{peticion}|{driver_id}"
-            attendToEngine(producer, msg_txt)
+            attendToEngine(producer, peticion, cp_id, driver_id)
 
 
 def run_kafka_loop(bootstrap):
