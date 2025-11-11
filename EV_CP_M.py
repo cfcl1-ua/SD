@@ -118,6 +118,6 @@ class Monitor:
             print("[ERROR] Conexión con engine cerrada.")
         
         finally:
-            print("[DEBUG] Conexión con engine cerrada, pero la conexión con central sigue activa.")
+            print("[DEBUG] Conexión con central cerrada")
             client_engine.close()
     
