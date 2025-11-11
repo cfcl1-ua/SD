@@ -1,8 +1,8 @@
 import socket 
 import threading
 import time
+import argparse
 from kafka import KafkaProducer, KafkaConsumer
-import json
 
 HEADER = 64
 FORMAT = 'utf-8'
@@ -236,7 +236,19 @@ class Engine:
     
                 
                 
-                
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Argumentos para el engine")
+    parser.add_argument("--broker", type=str, required=True,
+                        help="IP y puerto en formato IP:PUERTO, ejemplo 127.0.0.1:5000")
+    parser.add_argument("--puerto", type=str, required=True,
+                        help="puerto")
+    args = parser.parse_args()
+    ip_broker, port_broker = args.broker.split(":")
+    
+    
+    prueba= Engine(ip_broker, port_broker, args.puerto)
+    prueba.servicios()
+
                 
     
 
