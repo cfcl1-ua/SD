@@ -34,6 +34,7 @@ def handle_client(conn, addr, engine):
                     conn.send(f"ENGINE|{engine.status}".encode(FORMAT))
                     break
     print("Se rompio la conexion")
+    engine.status="OFFLINE"
     conn.shutdown(socket.SHUT_RDWR)
     conn.close()
     engine.conexiones -= 1
@@ -134,6 +135,7 @@ class Engine:
                 self.producer.send(TOPIC_CENTRAL, value=mensaje)
                 self.producer.flush(1)
                 print("Respesta enviada")
+                self.driver=None
                 time.sleep(1)
             elif self.status=="IDLE":
                 print("El punto de carga no esta conectado a ningun dispositivo")
@@ -233,6 +235,7 @@ class Engine:
                         
         except AssertionError:
             print("El engine se desactivo")
+            
     
                 
                 
