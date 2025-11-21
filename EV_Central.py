@@ -12,7 +12,7 @@ SERVER = "localhost"
 ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 FIN = "FIN"
-MAX_CONEXIONES = 5
+MAX_CONEXIONES = 64
 PRICE_PER_KWH = 0.28  # €/kWh
 CLIENTES_FILE = "Clientes.txt"
 CPS_FILE = "Cps.txt"
@@ -131,11 +131,22 @@ def replyToEngine(producer, peticion, cp_id, driver_id):
     producer.flush(1)
 
 def replyToDriver(producer, respuesta, cp_id, driver_id):
-    # Mensaje: central|RESPUESTA
+    """
+    Envia SIEMPRE un mensaje al driver con el formato:
+        central|RESPUESTA|CP_ID|DRIVER_ID
+    """
+    if cp_id is None:
+        cp_id = ""   # evita mandar "None" al driver
+
     payload = f"central|{respuesta}|{cp_id}|{driver_id}"
     topic_resp = topics_id(driver_id)
-    producer.send(topic_resp, payload)
-    producer.flush(1)
+
+    try:
+        producer.send(topic_resp, payload)
+        producer.flush(1)
+        print(f"[CENTRAL → DRIVER {driver_id}] {payload}")
+    except Exception as e:
+        print(f"[ERROR] Fallo enviando respuesta al driver {driver_id}: {e}")
 
 def searchCustomer(id_cliente):
     return id_cliente in CUSTOMER_IDX
@@ -158,33 +169,45 @@ def getCPStatus(cp_id):
 
 def attendToDriver(peticion, cp_id, driver_id, producer=None):
     """
-    - AUTENTIFICACION: lo gestiona Central (Clientes.txt) -> "central|OK"/"central|ERROR".
-    - AUTORIZACION y ESTADO: si el CP existe en CPS_IDX, reenvía al Engine; si no, "central|ERROR".
-    Devuelve string breve para logs.
+    Gestiona todas las peticiones del Driver.
+    SIEMPRE ENVÍA RESPUESTA AL DRIVER, incluso en caso de error.
     """
+
+    # ===================== AUTENTIFICACIÓN =====================
     if peticion == "AUTENTIFICACION":
         if addCustomer(driver_id):
             print("AUTENTIFICACION OK")
-            texto = "OK"
-            replyToDriver(producer, driver_id, texto)
+            replyToDriver(producer, "OK", "", driver_id)
             return "central|OK"
         else:
-            print("AUTENTIFICACION ERROR")
-            texto = "ERROR"
-            replyToDriver(producer, driver_id, texto)
+            print("AUTENTIFICACION ERROR (cliente ya existe)")
+            replyToDriver(producer, "ERROR:YA_REGISTRADO", "", driver_id)
             return "central|ERROR"
 
+
+    # ============= AUTORIZACIÓN / ESTADO / FIN ================
     if peticion in ("AUTORIZACION", "ESTADO", "FIN"):
-        if cp_id not in CPS_IDX:
-            print(f"{peticion}: ERROR (CP '{cp_id}' no encontrado en Central)")
-            return "central|ERROR"
-        else:
-            print(f"{peticion}: reenviado a Engine (cp={cp_id}, driver={driver_id})")
-            if producer is not None:
-                replyToEngine(producer, peticion, cp_id, driver_id)
-            return "central|OK"
 
-    print(f"Petición no soportada en Central: {peticion}")
+        # --- ERROR: CP NO REGISTRADO EN CENTRAL ---
+        if cp_id not in CPS_IDX:
+            msg = f"{peticion}:ERROR_CP_DESCONOCIDO"
+            print(msg)
+            replyToDriver(producer, msg, cp_id, driver_id)
+            return "central|ERROR"
+
+        # --- OK: REENVIAR AL ENGINE ---
+        print(f"{peticion}: reenviado a Engine (cp={cp_id}, driver={driver_id})")
+        if producer is not None:
+            replyToEngine(producer, peticion, cp_id, driver_id)
+
+        replyToDriver(producer, f"{peticion}:ENVIADO_AL_ENGINE", cp_id, driver_id)
+        return "central|OK"
+
+
+    # ===================== PETICIÓN NO SOPORTADA =====================
+    msg = f"ERROR:PETICION_NO_SOPORTADA={peticion}"
+    print(msg)
+    replyToDriver(producer, msg, cp_id, driver_id)
     return "central|ERROR"
 
 def cargarClientes(fich):
