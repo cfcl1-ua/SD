@@ -67,50 +67,55 @@ class ChargingPoint:
     
 if __name__ == "__main__":
     
-    parser = argparse.ArgumentParser(description="Argumentos para el CP")
-    parser.add_argument("--central", type=str, required=True,
-                    help="IP y puerto en formato IP:PUERTO, ejemplo 127.0.0.1:5000")
-    parser.add_argument("--engine", type=str, required=True,
-                    help="IP y puerto en formato IP:PUERTO, ejemplo 127.0.0.1:5000")
-    parser.add_argument("--id", type=str, required=True,
-                    help="ID del CP")
-    parser.add_argument("--localizacion", type=str, required=True,
-                    help="lugar del CP", default="calle falsa")
-    parser.add_argument("--broker", type=str, required=True,
-                    help="IP y puerto en formato IP:PUERTO, ejemplo 127.0.0.1:5000")
-    args = parser.parse_args()
-    
-    ip, puerto = args.central.split(":")
-    ip_engine, port_engine= args.engine.split(":")
-    ip_broker, port_broker = args.broker.split(":")
-    
-    Punto=ChargingPoint(args.id, args.localizacion, ip, int(puerto), ip_engine, int(port_engine), ip_broker, int(port_broker))
+    try:
+        parser = argparse.ArgumentParser(description="Argumentos para el CP")
+        parser.add_argument("--central", type=str, required=True,
+                        help="IP y puerto en formato IP:PUERTO, ejemplo 127.0.0.1:5000")
+        parser.add_argument("--engine", type=str, required=True,
+                        help="IP y puerto en formato IP:PUERTO, ejemplo 127.0.0.1:5000")
+        parser.add_argument("--id", type=str, required=True,
+                        help="ID del CP")
+        parser.add_argument("--localizacion", type=str, required=True,
+                        help="lugar del CP", default="calle falsa")
+        parser.add_argument("--broker", type=str, required=True,
+                        help="IP y puerto en formato IP:PUERTO, ejemplo 127.0.0.1:5000")
+        args = parser.parse_args()
         
-    #Lo conectamos con central
-    activo=Punto.Monitor.conectar_central()
-    
-    if activo:
+        ip, puerto = args.central.split(":")
+        ip_engine, port_engine= args.engine.split(":")
+        ip_broker, port_broker = args.broker.split(":")
         
-        #hilo donde monitor checara el estado del punto de arga
-        hilo_trabajo = threading.Thread(target=Punto.Engine.estado)
-        hilo_supervision = threading.Thread(target=Punto.Monitor.estado)
-        #hilo donde el engine realizara los servicios enviados por central
-        hilo_peticiones = threading.Thread(target=Punto.Engine.servicios)
-    
+        Punto=ChargingPoint(args.id, args.localizacion, ip, int(puerto), ip_engine, int(port_engine), ip_broker, int(port_broker))
+            
+        #Lo conectamos con central
+        activo=Punto.Monitor.conectar_central()
+        
+        if activo:
+            
+            #hilo donde monitor checara el estado del punto de arga
+            hilo_trabajo = threading.Thread(target=Punto.Engine.estado)
+            hilo_supervision = threading.Thread(target=Punto.Monitor.estado)
+            #hilo donde el engine realizara los servicios enviados por central
+            hilo_peticiones = threading.Thread(target=Punto.Engine.servicios)
+        
 
-        hilo_trabajo.start()
-        time.sleep(3)
-        hilo_supervision.start()
-        hilo_peticiones.start()
-        time.sleep(1)
-        #al presionar enter se activa el boton de ko de engine
-        Punto.Engine.menu()
-                    
-        hilo_supervision.join(timeout=5)
-        hilo_trabajo.join(timeout=5)
+            hilo_trabajo.start()
+            time.sleep(3)
+            hilo_supervision.start()
+            hilo_peticiones.start()
+            time.sleep(1)
+            #al presionar enter se activa el boton de ko de engine
+            Punto.Engine.menu()
+                        
+            hilo_supervision.join(timeout=4)
+            hilo_trabajo.join(timeout=4)
+                
+                
+            print("finish")
             
-            
-        print("finish")
-        
-    else:
-        print("error")
+        else:
+            print("error")
+    
+    
+    except KeyboardInterrupt:
+        print("\nInterrupción por usuario (Ctrl+C). Cerrando...")
