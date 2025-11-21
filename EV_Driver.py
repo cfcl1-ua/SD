@@ -86,7 +86,7 @@ def receiveAnswers(bootstrap_server: str, driver_id: str):
         bootstrap_servers=[bootstrap_server],
         value_deserializer=lambda m: m.decode(FORMAT),
         auto_offset_reset="latest",
-        enable_auto_commit=True,
+        enable_auto_commit=False,
         group_id=f"driver-{driver_id}",  # grupo común de drivers
     )
     print(f"[DRIVER] Escuchando respuestas en '{topic_resp}'…")
