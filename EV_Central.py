@@ -254,30 +254,29 @@ def cargarCPs(fich):
 
 ######################### ENGINE #########################
 
-def attendToEngine(producer,respuesta, cp_id, driver_id):
+def attendToEngine(producer, respuesta, cp_id, driver_id):
     """
-    Procesa una respuesta que viene del Engine (por Kafka) y la reenvía al driver.
-    Formatos esperados:
-        - "driver|120|DRIVER_ID"     -> 120 segundos
-        - "driver|IDLE|DRIVER_ID"    -> estado del CP
-
-    Siempre reenvía con:
-        "central|...|DRIVER_ID"
-    usando replyToDriver(producer, driver_id, texto)
+    Procesa respuestas del Engine:
+        - Si es tiempo en segundos → FIN correcto
+        - Si es estado → ESTADO del CP
+        - Si Engine devuelve error → mensaje directo al driver
     """
-    
-    # 1) Caso TIEMPO --> si la respuesta es un número entero
     if respuesta.isdigit():
         segundos = int(respuesta)
         horas = segundos / 3600
         precio = horas * PRICE_PER_KWH
-        resp = f"precio:.2f"
-        replyToDriver(producer, resp, cp_id, driver_id)
+
+        mensaje = f"FIN|TIEMPO:{segundos}|PRECIO:{precio:.2f}"
+        replyToDriver(producer, mensaje, cp_id, driver_id)
+        print(f"[CENTRAL] Enviado FIN con tiempo y precio a Driver {driver_id}")
+        return
+    
+    else:
+        mensaje = f"ESTADO|{respuesta}"
+        replyToDriver(producer, mensaje, cp_id, driver_id)
+        print(f"[CENTRAL] Estado reenviado al Driver {driver_id}: {mensaje}")
         return
 
-    # 2) Caso ESTADO → si no es número, lo tratamos como texto de estado
-    replyToDriver(producer, respuesta, cp_id, driver_id)
-    return
 
 ######################### KAFKA ##########################
 
