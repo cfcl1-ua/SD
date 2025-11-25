@@ -171,45 +171,37 @@ def getCPStatus(cp_id):
 def attendToDriver(peticion, cp_id, driver_id, producer=None):
     """
     Gestiona todas las peticiones del Driver.
-    SIEMPRE ENVÍA RESPUESTA AL DRIVER, incluso en caso de error.
+    Flujo definido:
+        AUTENTIFICACION → solo respuesta final
+        AUTORIZACION / ESTADO → mensaje preliminar + Engine
+        FIN → solo resultado final (tras Engine)
     """
-
-    # ===================== AUTENTIFICACIÓN =====================
     if peticion == "AUTENTIFICACION":
         if addCustomer(driver_id):
-            print("AUTENTIFICACION OK")
             replyToDriver(producer, "OK", "", driver_id)
             return "central|OK"
         else:
-            print("AUTENTIFICACION ERROR (cliente ya existe)")
             replyToDriver(producer, "ERROR:YA_REGISTRADO", "", driver_id)
             return "central|ERROR"
 
-
-    # ============= AUTORIZACIÓN / ESTADO / FIN ================
     if peticion in ("AUTORIZACION", "ESTADO", "FIN"):
 
-        # --- ERROR: CP NO REGISTRADO EN CENTRAL ---
+        # --- Validación de CP ---
         if cp_id not in CPS_IDX:
-            msg = f"{peticion}:ERROR_CP_DESCONOCIDO"
-            print(msg)
-            replyToDriver(producer, msg, cp_id, driver_id)
+            replyToDriver(producer, f"{peticion}:ERROR_CP_DESCONOCIDO", cp_id, driver_id)
             return "central|ERROR"
+        
+        if peticion in ("AUTORIZACION", "ESTADO"):
+            replyToDriver(producer, f"{peticion}:ENVIADO_AL_ENGINE", cp_id, driver_id)
 
-        # --- OK: REENVIAR AL ENGINE ---
-        print(f"{peticion}: reenviado a Engine (cp={cp_id}, driver={driver_id})")
         if producer is not None:
             replyToEngine(producer, peticion, cp_id, driver_id)
 
-        replyToDriver(producer, f"{peticion}:ENVIADO_AL_ENGINE", cp_id, driver_id)
         return "central|OK"
 
-
-    # ===================== PETICIÓN NO SOPORTADA =====================
-    msg = f"ERROR:PETICION_NO_SOPORTADA={peticion}"
-    print(msg)
-    replyToDriver(producer, msg, cp_id, driver_id)
+    replyToDriver(producer, "ERROR:PETICION_DESCONOCIDA", cp_id, driver_id)
     return "central|ERROR"
+
 
 def cargarClientes(fich):
     """
