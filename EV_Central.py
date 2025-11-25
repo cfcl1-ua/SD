@@ -132,11 +132,11 @@ def replyToEngine(producer, peticion, cp_id, driver_id):
 
 def replyToDriver(producer, respuesta, cp_id, driver_id):
     """
-    Envia SIEMPRE un mensaje al driver con el formato:
+    Envía SIEMPRE un mensaje al driver con formato:
         central|RESPUESTA|CP_ID|DRIVER_ID
     """
     if cp_id is None:
-        cp_id = ""   # evita mandar "None" al driver
+        cp_id = ""
 
     payload = f"central|{respuesta}|{cp_id}|{driver_id}"
     topic_resp = topics_id(driver_id)
@@ -147,6 +147,7 @@ def replyToDriver(producer, respuesta, cp_id, driver_id):
         print(f"[CENTRAL → DRIVER {driver_id}] {payload}")
     except Exception as e:
         print(f"[ERROR] Fallo enviando respuesta al driver {driver_id}: {e}")
+
 
 def searchCustomer(id_cliente):
     return id_cliente in CUSTOMER_IDX
