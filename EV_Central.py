@@ -3,8 +3,8 @@ from kafka import KafkaProducer, KafkaConsumer
 import threading
 import sys
 from ChargingPoint import ChargingPoint
-#from Interfaz import interfaz
 import time
+import json
 
 HEADER = 64
 PORT = 5050
@@ -12,170 +12,102 @@ SERVER = "localhost"
 ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 FIN = "FIN"
-MAX_CONEXIONES = 64
-PRICE_PER_KWH = 0.28  # €/kWh
-CLIENTES_FILE = "Clientes.txt"
-CPS_FILE = "Cps.txt"
+MAX_CONEXIONES = 5
+PRICE_PER_KWH = 0.28
+
+DB_FILE = "db.json"
 CPS = []
 CPS_IDX = []
 CUSTOMER_IDX = []
 CONEX_ACTIVAS = 0
 
-# ================== TOPICS (alineados con EV_Driver) ==================
-TOPIC_DTC = "driver-to-central"              
+TOPIC_DTC = "driver-to-central"
 TOPIC_ETC = "engine-to-central"
-   
-########################## MONITOR ######################
 
-##########################################################
-# ==== DASHBOARD WEB PARA MONITORIZAR LOS PUNTOS DE RECARGA ====
-##########################################################
-
-
-            
-def isEmpty(x):
-    return x==None or x==""
-
-
-def updateStatusCP(id_cp, estado):
-    """
-    Actualiza el estado en Cps.txt.
-    Devuelve False si falta dato o si no se encontró el CP; True si actualiza.
-    """
-    if isEmpty(id_cp) or isEmpty(estado):
-        return False
-
-    # Leer todas las líneas
+# ---------------------------------------------------------
+#   JSON DATABASE
+# ---------------------------------------------------------
+def loadDB():
     try:
-        with open(CPS_FILE, "r", encoding=FORMAT) as f:
-            lines = f.readlines()
+        with open(DB_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
     except FileNotFoundError:
+        return {"clientes": [], "cps": []}
+
+def saveDB(db):
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(db, f, indent=4)
+
+def searchCustomer(id_cliente):
+    db = loadDB()
+    return id_cliente in db["clientes"]
+
+def addCustomer(id_cliente):
+    db = loadDB()
+    if id_cliente in db["clientes"]:
         return False
-
-    for i, line in enumerate(lines):
-        parts = [p.strip() for p in line.split(",")]
-        if len(parts) < 3:
-            continue
-        if parts[0] == id_cp:
-            parts[2] = estado.strip()
-            lines[i] = f"{parts[0]}, {parts[1]}, {parts[2]}\n"
-            break
-
-    with open(CPS_FILE, "w", encoding=FORMAT) as f:
-        f.writelines(lines)
+    db["clientes"].append(id_cliente)
+    saveDB(db)
     return True
 
+def cargarClientes():
+    db = loadDB()
+    return db["clientes"]
+
+def cargarCPs():
+    db = loadDB()
+    cps = db["cps"]
+    ids = [cp["id"] for cp in cps]
+    return cps, ids
 
 def insertToCPsBD(id_cp, loc_cp, estado_cp):
-    """
-    Inserta: id_cp, loc_cp, estado_cp
-    Devuelve False si falta dato; True si escribe.
-    """
-    if isEmpty(id_cp) or isEmpty(loc_cp) or isEmpty(estado_cp):
+    if not id_cp or not loc_cp or not estado_cp:
         return False
-
-    with open(CPS_FILE, "a", encoding=FORMAT) as f:
-        f.write(f"{id_cp.strip()}, {loc_cp.strip()}, {estado_cp.strip()}\n")
+    db = loadDB()
+    for cp in db["cps"]:
+        if cp["id"] == id_cp:
+            return False
+    db["cps"].append({
+        "id": id_cp,
+        "loc": loc_cp,
+        "estado": estado_cp.upper()
+    })
+    saveDB(db)
     return True
 
+def updateStatusCP(id_cp, estado):
+    db = loadDB()
+    for cp in db["cps"]:
+        if cp["id"] == id_cp:
+            cp["estado"] = estado.upper()
+            saveDB(db)
+            return True
+    return False
 
-def attendToMonitor(peticion, id_cp, var):
-    """
-    peticion: 'AUTENTIFICACION' | 'ESTADO'
-    """
-    if peticion == "AUTENTIFICACION":
-        # ¿ya está en memoria?
-        if id_cp in CPS_IDX:
-            return "central|ERROR"
+# ---------------------------------------------------------
+#   DRIVER COMMUNICATION
+# ---------------------------------------------------------
+def topics_id(id):
+    return f"central-to-consumer-{id}"
 
-        if not insertToCPsBD(id_cp, var, "IDLE"):
-            return "central|ERROR"
-
-        CPS_IDX.append(id_cp)
-        return "central|OK"
-
-    elif peticion == "ESTADO":
-        if id_cp not in CPS_IDX:
-            return "central|ERROR"
-
-        if not updateStatusCP(id_cp, var):
-            return "central|ERROR"
-
-        return "central|OK"
-
-    else:
-        if id_cp in CPS_IDX:
-            return "REGISTRADO"
-        return "DESCONOCIDO"
-         
-            
-########################## DRIVER #######################
-# Tarea 2b
-def searchCP(cp_id):
-    """
-    Busca un Charging Point por su ID.
-    Devuelve:
-        (True, cp)  -> si el CP existe
-        (False, None) -> si no se encuentra
-    """
-    for cp in CPs:
-        if cp.getId() == cp_id:
-            return True, cp
-    return False, None
+def replyToDriver(producer, respuesta, cp_id, driver_id):
+    if cp_id is None:
+        cp_id = ""
+    payload = f"central|{respuesta}|{cp_id}|{driver_id}"
+    topic_resp = topics_id(driver_id)
+    try:
+        producer.send(topic_resp, payload)
+        producer.flush(1)
+    except:
+        pass
 
 def replyToEngine(producer, peticion, cp_id, driver_id):
-    # Mensaje: central|PETICION|CP|DRIVER
     topic_resp = topics_id(cp_id)
     payload = f"central|{peticion}|{cp_id}|{driver_id}"
     producer.send(topic_resp, payload)
     producer.flush(1)
 
-def replyToDriver(producer, respuesta, cp_id, driver_id):
-    """
-    Envía SIEMPRE un mensaje al driver con formato:
-        central|RESPUESTA|CP_ID|DRIVER_ID
-    """
-    if cp_id is None:
-        cp_id = ""
-
-    payload = f"central|{respuesta}|{cp_id}|{driver_id}"
-    topic_resp = topics_id(driver_id)
-
-    try:
-        producer.send(topic_resp, payload)
-        producer.flush(1)
-        print(f"[CENTRAL → DRIVER {driver_id}] {payload}")
-    except Exception as e:
-        print(f"[ERROR] Fallo enviando respuesta al driver {driver_id}: {e}")
-
-
-def searchCustomer(id_cliente):
-    return id_cliente in CUSTOMER_IDX
-
-
-def addCustomer(id_cliente):
-    if not searchCustomer(id_cliente):  
-        CUSTOMER_IDX.append(id_cliente)
-        with open(CLIENTES_FILE, "a", encoding="utf-8") as f:
-            f.write(id_cliente + "\n")
-        return True
-    return False
-
-
-def getCPStatus(cp_id):
-    for cp in CPs:
-        if cp.getId() == cp_id:
-            return cp.estado
-    return None
-
 def attendToDriver(peticion, cp_id, driver_id, producer=None):
-    """
-    Gestiona todas las peticiones del Driver.
-    Flujo definido:
-        AUTENTIFICACION → solo respuesta final
-        AUTORIZACION / ESTADO → mensaje preliminar + Engine
-        FIN → solo resultado final (tras Engine)
-    """
     if peticion == "AUTENTIFICACION":
         if addCustomer(driver_id):
             replyToDriver(producer, "OK", "", driver_id)
@@ -185,12 +117,10 @@ def attendToDriver(peticion, cp_id, driver_id, producer=None):
             return "central|ERROR"
 
     if peticion in ("AUTORIZACION", "ESTADO", "FIN"):
-
-        # --- Validación de CP ---
         if cp_id not in CPS_IDX:
             replyToDriver(producer, f"{peticion}:ERROR_CP_DESCONOCIDO", cp_id, driver_id)
             return "central|ERROR"
-        
+
         if peticion in ("AUTORIZACION", "ESTADO"):
             replyToDriver(producer, f"{peticion}:ENVIADO_AL_ENGINE", cp_id, driver_id)
 
@@ -202,256 +132,119 @@ def attendToDriver(peticion, cp_id, driver_id, producer=None):
     replyToDriver(producer, "ERROR:PETICION_DESCONOCIDA", cp_id, driver_id)
     return "central|ERROR"
 
-
-def cargarClientes(fich):
-    """
-    Lee un fichero de clientes con formato:
-        ID_CLIENTE
-
-    Devuelve: lista[str] con los campos en orden plano:
-        [id1, id2, ...]
-    """
-    clientes = []
-    with open(fich, "r", encoding=FORMAT) as f:
-        for line in f:
-            if line.strip():  # Ignora líneas vacías
-                cli_id = line.strip()
-                clientes.append(cli_id)
-    return clientes
-
-# Tarea 1
-def cargarCPs(fich):
-    """
-    Lee un fichero de puntos de recarga con formato:
-        CP01, Aparcamiento Norte, IDLE
-        CP02, Parking Sur, OUT OF ORDER
-
-    Devuelve:
-        cps -> lista de diccionarios con id, loc, estado
-        idx -> lista de identificadores (para CPs_IDX)
-    """
-    cps = []
-    idx = []
-
-    try:
-        with open(fich, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
-                    parts = [p.strip() for p in line.split(",")]
-                    cp_id, loc, estado = parts[0], parts[1], parts[2]
-                    cps.append({
-                        "id": cp_id,
-                        "loc": loc,
-                        "estado": estado.upper()
-                    })
-                    idx.append(cp_id)
-    except FileNotFoundError:
-        print(f"[AVISO] No se encontró el fichero {fich}.")
-    except Exception as e:
-        print(f"[ERROR] al cargar {fich}: {e}")
-
-    return cps, idx
-
-######################### ENGINE #########################
-
+# ---------------------------------------------------------
+#   ENGINE RESPONSES
+# ---------------------------------------------------------
 def attendToEngine(producer, respuesta, cp_id, driver_id):
-    """
-    Procesa respuestas del Engine:
-        - Si es tiempo en segundos → FIN correcto
-        - Si es estado → ESTADO del CP
-        - Si Engine devuelve error → mensaje directo al driver
-    """
     if respuesta.isdigit():
         segundos = int(respuesta)
         horas = segundos / 3600
         precio = horas * PRICE_PER_KWH
-
         mensaje = f"FIN|TIEMPO:{segundos}|PRECIO:{precio:.2f}"
         replyToDriver(producer, mensaje, cp_id, driver_id)
-        print(f"[CENTRAL] Enviado FIN con tiempo y precio a Driver {driver_id}")
         return
-    
     else:
         mensaje = f"ESTADO|{respuesta}"
         replyToDriver(producer, mensaje, cp_id, driver_id)
-        print(f"[CENTRAL] Estado reenviado al Driver {driver_id}: {mensaje}")
         return
 
-
-######################### KAFKA ##########################
-
-def topics_id(id):
-    return f"central-to-consumer-{id}"
-
+# ---------------------------------------------------------
+#   KAFKA LOOP
+# ---------------------------------------------------------
 def create_producer(bootstrap):
-    """
-    Crea un productor Kafka con la configuración básica.
-    """
-    try:
-        producer = KafkaProducer(
-            bootstrap_servers=[bootstrap],
-            value_serializer=lambda s: s.encode(FORMAT),
-            linger_ms=10,
-        )
-        print(f"[CENTRAL] Productor conectado a {bootstrap}")
-        return producer
-    except Exception as e:
-        print(f"[CENTRAL] No puedo crear el productor en '{bootstrap}': {e}")
-        print("--> Verifica que Kafka está arrancado, el puerto es 9092 y advertised.listeners es accesible.")
-        raise
-
+    return KafkaProducer(
+        bootstrap_servers=[bootstrap],
+        value_serializer=lambda s: s.encode(FORMAT),
+        linger_ms=10,
+    )
 
 def create_consumer(bootstrap):
-    try:
-        consumer = KafkaConsumer(
-            TOPIC_DTC, TOPIC_ETC,
-            bootstrap_servers=[bootstrap],
-            value_deserializer=lambda m: m.decode(FORMAT),
-            auto_offset_reset="earliest",
-            enable_auto_commit=True,
-            group_id="central-group",
-            client_id="central-1",
-        )
-        print(f"[CENTRAL] Conectado a {bootstrap}, escuchando '{TOPIC_DTC}'…")
-        return consumer
-    except Exception as e:
-        print(f"[CENTRAL] No puedo conectar con el broker '{bootstrap}': {e}")
-        print("--> Verifica que Kafka está arrancado, el puerto es 9092 y advertised.listeners es accesible.")
-        raise
+    return KafkaConsumer(
+        TOPIC_DTC, TOPIC_ETC,
+        bootstrap_servers=[bootstrap],
+        value_deserializer=lambda m: m.decode(FORMAT),
+        auto_offset_reset="earliest",
+        enable_auto_commit=True,
+        group_id="central-group",
+        client_id="central-1",
+    )
 
 def receive_messages(consumer, producer):
     for msg in consumer:
         text = msg.value or ""
         parts = text.split("|")
-    
-        # driver|PETICION|CP_ID|DRIVER_ID   o   engine|RESPUESTA|CP_ID|DRIVER_ID
         remitente = parts[0].lower()
-        peticion  = parts[1]
-        cp_id     = parts[2]
+        peticion = parts[1]
+        cp_id = parts[2]
         driver_id = parts[3]
 
-        print(f"[CENTRAL] Recibido: {text}")
-        print(f"  --> remitente: {remitente}, Driver: {driver_id}, CP: {cp_id}")
-
         if remitente == "driver":
-            # tu attendToDriver ahora recibe también el producer
             attendToDriver(peticion, cp_id, driver_id, producer)
-
         elif remitente == "engine":
-            # el engine habla como "engine|...", pero tu attendToEngine
-            # quiere "driver|..." -> lo adaptamos aquí sin cambiar tu lógica
-            if peticion == FIN:
-                print(f"[CENTRAL] Driver {driver_id} cerró sesión.")
             attendToEngine(producer, peticion, cp_id, driver_id)
 
 
 def run_kafka_loop(bootstrap):
-    """Crea consumer/producer y entra al bucle Kafka (hilo dedicado)."""
-    consumer = None
-    producer = None
-    try:
-        consumer = create_consumer(bootstrap)
-        producer = create_producer(bootstrap)
-        receive_messages(consumer, producer)   # bucle bloqueante
-    except Exception as e:
-        print(f"[CENTRAL] Hilo Kafka terminado con error: {e}")
-    finally:
-        try:
-            if consumer is not None:
-                consumer.close()
-        except Exception:
-            pass
-        try:
-            if producer is not None:
-                producer.flush()
-                producer.close()
-        except Exception:
-            pass
-        
-        
-######################### SOCKET ##########################
-        
-def handle_client(conn, addr):
-    print(f"[NUEVA CONEXION] {addr} connected.")
+    consumer = create_consumer(bootstrap)
+    producer = create_producer(bootstrap)
+    receive_messages(consumer, producer)
 
+# ---------------------------------------------------------
+#   SOCKET SERVER
+# ---------------------------------------------------------
+def start(server):
+    global CONEX_ACTIVAS
+    server.listen()
+    while True:
+        conn, addr = server.accept()
+        CONEX_ACTIVAS += 1
+        if CONEX_ACTIVAS <= MAX_CONEXIONES:
+            conn.send("1".encode(FORMAT))
+            threading.Thread(target=handle_client, args=(conn, addr)).start()
+        else:
+            conn.send("OOppsss... DEMASIADAS CONEXIONES".encode(FORMAT))
+            conn.close()
+
+def handle_client(conn, addr):
     connected = True
-    msg_aux = ""  # Lo usamos para mostrar el mensaje del cliente una vez
     while connected:
         try:
             msg_length = conn.recv(HEADER).decode(FORMAT)
             if msg_length:
-                msg_length = int(msg_length)
-                msg = conn.recv(msg_length).decode(FORMAT)
+                msg = conn.recv(int(msg_length)).decode(FORMAT)
                 if msg == FIN:
                     connected = False
                 else:
-                    parts = msg.split("|")  # split quita los separadores y convierte el mensaje en una lista 
-                    if parts[0] == "monitor":       
-                        resp = attendToMonitor(parts[1], parts[2], parts[3])  # LLAMAR A LA FUNCION attendToMonitor
-                        conn.send(resp.encode(FORMAT))
-                    else:
-                        resp = "ERROR: peticion de origen desconocido"
-                if msg != msg_aux:
-                    print(f" He recibido del cliente [{addr}] el mensaje: {msg}")
-                msg_aux = msg
+                    parts = msg.split("|")
+                    if parts[0] == "monitor":
+                        if parts[1] == "AUTENTIFICACION":
+                            resp = insertToCPsBD(parts[2], parts[3], "IDLE")
+                            conn.send(str(resp).encode(FORMAT))
+                        elif parts[1] == "ESTADO":
+                            resp = updateStatusCP(parts[2], parts[3])
+                            conn.send(str(resp).encode(FORMAT))
+        except:
+            break
+    conn.close()
 
-        except ConnectionResetError:
-            print(f"[{addr}] Conexión interrumpida por el cliente (WinError 10054).")
-            break  # salimos del bucle si el cliente se desconecta abruptamente
-
-    print("ADIOS. TE ESPERO EN OTRA OCASION")
-    conn.close()    
-
-def start(server):
-    global CONEX_ACTIVAS
-    server.listen()
-    print(f"[LISTENING] Servidor a la escucha en {SERVER}")
-    print(f"[CONEXIONES ACTIVAS] {CONEX_ACTIVAS}")
-    while True:
-        conn, addr = server.accept()
-        CONEX_ACTIVAS += 1
-        if (CONEX_ACTIVAS <= MAX_CONEXIONES):
-            msg = "1"
-            conn.send(msg.encode(FORMAT)) # Enviamos un 1 para informar que nos conectamos correctamente
-            thread = threading.Thread(target=handle_client, args=(conn, addr))
-            thread.start()
-            print(f"[CONEXIONES ACTIVAS] {CONEX_ACTIVAS}")
-            print("CONEXIONES RESTANTES PARA CERRAR EL SERVICIO", MAX_CONEXIONES-CONEX_ACTIVAS)
-        else:
-            print("OOppsss... DEMASIADAS CONEXIONES. ESPERANDO A QUE ALGUIEN SE VAYA")
-            conn.send("OOppsss... DEMASIADAS CONEXIONES. Tendrás que esperar a que alguien se vaya".encode(FORMAT))
-            conn.close()
-            #CONEX_ACTUALES = threading.active_count()-1
-
-######################### MAIN ##########################
-
+# ---------------------------------------------------------
+#   MAIN
+# ---------------------------------------------------------
 def main():
-    
-    print("****** EV_Central ******")
-    
-    # Pedir la IP al usuario
+    global SERVER, ADDR, CPS, CPS_IDX
+
     SERVER = input("Introduce la IP del servidor: ").strip()
-    print(f"[INFO] Servidor configurado en {SERVER}:{PORT}\n")
     ADDR = (SERVER, PORT)
-    
-    clientes = cargarClientes(CLIENTES_FILE)
-    i = 0
-    for c in clientes:
-        if i%2 == 0:
-            CUSTOMER_IDX.append(c)
-        i+=1
-    
+
+    CPS, CPS_IDX = cargarCPs()
+
     bootstrap = SERVER
-    t_kafka = threading.Thread(target=run_kafka_loop, args=(bootstrap,), daemon=True)
-    t_kafka.start()
-    
-    CPS, CPS_IDX = cargarCPs(CPS_FILE)
+    threading.Thread(target=run_kafka_loop, args=(bootstrap,), daemon=True).start()
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # opcional pero útil
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind(ADDR)
-
-    print("[STARTING] Servidor inicializándose...")
     start(server)
 
-if __name__=="__main__": main()
+if __name__ == "__main__":
+    main()
