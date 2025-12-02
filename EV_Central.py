@@ -213,29 +213,41 @@ def start(server):
 
 def handle_client(conn, addr):
     global CONEX_ACTIVAS
+    print(f"[NUEVA CONEXION] {addr}")
+
     connected = True
     while connected:
         try:
             msg_length = conn.recv(HEADER).decode(FORMAT)
             if msg_length:
                 msg = conn.recv(int(msg_length)).decode(FORMAT)
+
                 if msg == FIN:
                     connected = False
+                    break
+
+                parts = msg.split("|")
+
+                if parts[0] == "monitor":
+
+                    # --- AUTENTIFICACION ---
+                    if parts[1] == "AUTENTIFICACION":
+                        resp = insertToCPsBD(parts[2], parts[3], "IDLE")
+                        resp = "True" if resp else "False"
+                        conn.send(resp.encode(FORMAT))
+
+                    # --- ACTUALIZACIÓN DE ESTADO ---
+                    elif parts[1] == "ESTADO":
+                        ok = updateStatusCP(parts[2], parts[3])
+                        conn.send(str(ok).encode(FORMAT))
+
                 else:
-                    parts = msg.split("|")
-                    if parts[0] == "monitor":
-                        if parts[1] == "AUTENTIFICACION":
-                            resp = insertToCPsBD(parts[2], parts[3], "IDLE")
-                            if resp is True:
-                                resp = "True"
-                            else:
-                                resp = "False"
-                            conn.send(str(resp).encode(FORMAT))
-                        elif parts[1] == "ESTADO":
-                            resp = updateStatusCP(parts[2], parts[3])
-                            conn.send(str(resp).encode(FORMAT))
-        except:
+                    conn.send("ERROR:ORIGEN_DESCONOCIDO".encode(FORMAT))
+
+        except Exception as e:
+            print(f"[ERROR handle_client]: {e}")
             break
+
     conn.close()
     CONEX_ACTIVAS -= 1
     print(f"CONEXION CERRADA: {addr} | ACTIVAS: {CONEX_ACTIVAS}")
