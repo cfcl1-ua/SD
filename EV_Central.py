@@ -84,6 +84,35 @@ def updateStatusCP(id_cp, estado):
             return True
     return False
 
+def attendToMonitor(peticion, id_cp, var):
+    """
+    peticion: 'AUTENTIFICACION' | 'ESTADO'
+    """
+    if peticion == "AUTENTIFICACION":
+        # ¿ya está en memoria?
+        if id_cp in CPS_IDX:
+            return "central|ERROR"
+
+        if not insertToCPsBD(id_cp, var, "IDLE"):
+            return "central|ERROR"
+
+        CPS_IDX.append(id_cp)
+        return "central|OK"
+
+    elif peticion == "ESTADO":
+        if id_cp not in CPS_IDX:
+            return "central|ERROR"
+
+        if not updateStatusCP(id_cp, var):
+            return "central|ERROR"
+
+        return "central|OK"
+
+    else:
+        if id_cp in CPS_IDX:
+            return "REGISTRADO"
+        return "DESCONOCIDO"
+
 # ---------------------------------------------------------
 #   DRIVER COMMUNICATION
 # ---------------------------------------------------------
@@ -218,31 +247,37 @@ def handle_client(conn, addr):
     connected = True
     while connected:
         try:
+            # --- Recibir header ---
             msg_length = conn.recv(HEADER).decode(FORMAT)
-            if msg_length:
-                msg = conn.recv(int(msg_length)).decode(FORMAT)
+            if not msg_length:
+                continue
 
-                if msg == FIN:
-                    connected = False
-                    break
+            # --- Recibir mensaje ---
+            msg = conn.recv(int(msg_length)).decode(FORMAT)
 
-                parts = msg.split("|")
+            # --- Fin de conexión ---
+            if msg == FIN:
+                connected = False
+                break
 
-                if parts[0] == "monitor":
+            # --- Procesar mensaje ---
+            parts = msg.split("|")
 
-                    # --- AUTENTIFICACION ---
-                    if parts[1] == "AUTENTIFICACION":
-                        resp = insertToCPsBD(parts[2], parts[3], "IDLE")
-                        resp = "True" if resp else "False"
-                        conn.send(resp.encode(FORMAT))
+            if parts[0] == "monitor":
 
-                    # --- ACTUALIZACIÓN DE ESTADO ---
-                    elif parts[1] == "ESTADO":
-                        ok = updateStatusCP(parts[2], parts[3])
-                        conn.send(str(ok).encode(FORMAT))
+                # parts = ["monitor", peticion, id_cp, var]
+                peticion = parts[1]
+                id_cp    = parts[2]
+                var      = parts[3]
 
-                else:
-                    conn.send("ERROR:ORIGEN_DESCONOCIDO".encode(FORMAT))
+                # Delegar TODA la lógica al método original
+                respuesta = attendToMonitor(peticion, id_cp, var)
+
+                # Enviar respuesta al monitor
+                conn.send(respuesta.encode(FORMAT))
+
+            else:
+                conn.send("central|ERROR_ORIGEN".encode(FORMAT))
 
         except Exception as e:
             print(f"[ERROR handle_client]: {e}")

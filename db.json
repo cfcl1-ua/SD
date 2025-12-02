@@ -1,0 +1,13 @@
+{
+    "clientes": [
+        "21",
+        "32"
+    ],
+    "cps": [
+        {
+            "id": "90",
+            "loc": "tabarca",
+            "estado": "CHARGING"
+        }
+    ]
+}
