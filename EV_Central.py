@@ -197,15 +197,22 @@ def start(server):
     server.listen()
     while True:
         conn, addr = server.accept()
+
         CONEX_ACTIVAS += 1
+
         if CONEX_ACTIVAS <= MAX_CONEXIONES:
             conn.send("1".encode(FORMAT))
+            print("NUEVA CONEXION DESDE:", addr)
+            print("CONEXIONES ACTIVAS:", CONEX_ACTIVAS)
             threading.Thread(target=handle_client, args=(conn, addr)).start()
         else:
             conn.send("OOppsss... DEMASIADAS CONEXIONES".encode(FORMAT))
+            print("CONEXION RECHAZADA (LIMITE ALCANZADO):", addr)
             conn.close()
 
+
 def handle_client(conn, addr):
+    global CONEX_ACTIVAS
     connected = True
     while connected:
         try:
@@ -219,6 +226,10 @@ def handle_client(conn, addr):
                     if parts[0] == "monitor":
                         if parts[1] == "AUTENTIFICACION":
                             resp = insertToCPsBD(parts[2], parts[3], "IDLE")
+                            if resp is True:
+                                resp = "True"
+                            else:
+                                resp = "False"
                             conn.send(str(resp).encode(FORMAT))
                         elif parts[1] == "ESTADO":
                             resp = updateStatusCP(parts[2], parts[3])
@@ -226,6 +237,8 @@ def handle_client(conn, addr):
         except:
             break
     conn.close()
+    CONEX_ACTIVAS -= 1
+    print(f"CONEXION CERRADA: {addr} | ACTIVAS: {CONEX_ACTIVAS}")
 
 # ---------------------------------------------------------
 #   MAIN
