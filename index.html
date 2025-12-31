@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>EV Central - Charging Points</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            margin-top: 20px;
+        }
+
+        th, td {
+            padding: 10px;
+            border: 1px solid #ddd;
+            text-align: center;
+        }
+
+        th {
+            background: #2c3e50;
+            color: white;
+        }
+
+        .ACTIVE {
+            color: green;
+            font-weight: bold;
+        }
+
+        .OFF {
+            color: red;
+            font-weight: bold;
+        }
+
+        .UNKNOWN {
+            color: orange;
+            font-weight: bold;
+        }
+
+        footer {
+            margin-top: 20px;
+            text-align: center;
+            color: #777;
+        }
+    </style>
+</head>
+<body>
+
+<h1>EV Central - Estado de Charging Points</h1>
+
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Ubicación</th>
+            <th>Estado</th>
+            <th>Potencia (kW)</th>
+            <th>Coches conectados</th>
+            <th>Última actualización</th>
+        </tr>
+    </thead>
+    <tbody id="cp-table">
+    </tbody>
+</table>
+
+<footer>
+    Sistemas Distribuidos - EV Charging
+</footer>
+
+<script>
+    async function loadChargingPoints() {
+        try {
+            const response = await fetch("../charging_points.json");
+            const cps = await response.json();
+
+            const table = document.getElementById("cp-table");
+            table.innerHTML = "";
+
+            cps.forEach(cp => {
+                const row = document.createElement("tr");
+
+                row.innerHTML = `
+                    <td>${cp.id}</td>
+                    <td>${cp.location}</td>
+                    <td class="${cp.status || 'UNKNOWN'}">${cp.status || 'UNKNOWN'}</td>
+                    <td>${cp.current_power}</td>
+                    <td>${cp.connected_cars}</td>
+                    <td>${cp.last_update}</td>
+                `;
+
+                table.appendChild(row);
+            });
+
+        } catch (error) {
+            console.error("Error cargando charging points:", error);
+        }
+    }
+
+    loadChargingPoints();
+    setInterval(loadChargingPoints, 5000);
+</script>
+
+</body>
+</html>
