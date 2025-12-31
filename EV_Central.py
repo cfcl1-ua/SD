@@ -1,32 +1,127 @@
 import socket
-from kafka import KafkaProducer, KafkaConsumer
 import threading
-import sys
-from ChargingPoint import ChargingPoint
 import time
 import json
+from kafka import KafkaProducer, KafkaConsumer
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+from cryptography.fernet import Fernet
+
+# =========================================================
+# CONFIGURACIÓN GENERAL
+# =========================================================
 
 HEADER = 64
 PORT = 5050
-SERVER = "localhost"
-ADDR = (SERVER, PORT)
-FORMAT = 'utf-8'
+FORMAT = "utf-8"
 FIN = "FIN"
 MAX_CONEXIONES = 5
 PRICE_PER_KWH = 0.28
 
-DB_FILE = "db.json"
-CPS = []
-CPS_IDX = []
-CUSTOMER_IDX = []
-CONEX_ACTIVAS = 0
-
 TOPIC_DTC = "driver-to-central"
 TOPIC_ETC = "engine-to-central"
 
-# ---------------------------------------------------------
-#   JSON DATABASE
-# ---------------------------------------------------------
+DB_FILE = "db.json"
+
+# =========================================================
+# ESTADO GLOBAL
+# =========================================================
+
+SERVER = "localhost"
+ADDR = (SERVER, PORT)
+
+CPS = []               # CPs registrados
+CPS_IDX = []           # IDs CPs
+CP_KEYS = {}           # id_cp -> clave simétrica
+
+CLIMATE_ALERTS = {}    # localizacion -> OK | KO
+AUDIT_LOG = []         # auditoría en memoria
+
+CONEX_ACTIVAS = 0
+
+# =========================================================
+# FLASK API (inspirada en API_Central_ANTONIO)
+# =========================================================
+
+app = Flask(__name__)
+CORS(app)
+
+def audit(action, description, origin=None):
+    evento = {
+        "fecha_hora": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "origen": origin or SERVER,
+        "accion": action,
+        "descripcion": description
+    }
+    AUDIT_LOG.append(evento)
+    print("[AUDITORIA]", evento)
+
+@app.route("/clima", methods=["POST"])
+def recibir_clima():
+    data = request.json
+    loc = data.get("localizacion")
+    estado = data.get("estado")
+
+    if not loc or not estado:
+        return jsonify({"error": "datos incompletos"}), 400
+
+    CLIMATE_ALERTS[loc] = estado
+    audit("ALERTA_CLIMATOLOGICA", f"{loc} -> {estado}", request.remote_addr)
+
+    return jsonify({"resultado": "OK"})
+
+@app.route("/cps")
+def obtener_cps():
+    return jsonify(CPS)
+
+@app.route("/estado")
+def estado_general():
+    return jsonify({
+        "central": "ACTIVA",
+        "num_cps": len(CPS),
+        "alertas_clima": CLIMATE_ALERTS
+    })
+
+@app.route("/auditoria")
+def obtener_auditoria():
+    pagina = int(request.args.get("pagina", 1))
+    limite = int(request.args.get("limite", 10))
+    inicio = (pagina - 1) * limite
+    fin = inicio + limite
+
+    total = len(AUDIT_LOG)
+    total_paginas = (total + limite - 1) // limite
+
+    return jsonify({
+        "eventos": AUDIT_LOG[::-1][inicio:fin],
+        "pagina_actual": pagina,
+        "total_paginas": total_paginas
+    })
+
+def run_api():
+    app.run(host="0.0.0.0", port=8000, debug=False)
+
+# =========================================================
+# CIFRADO SIMÉTRICO CP ↔ CENTRAL
+# =========================================================
+
+def encrypt_msg(id_cp, msg):
+    f = Fernet(CP_KEYS[id_cp].encode())
+    return f.encrypt(msg.encode())
+
+def decrypt_msg(id_cp, msg):
+    f = Fernet(CP_KEYS[id_cp].encode())
+    return f.decrypt(msg).decode()
+
+def revoke_cp(id_cp):
+    if id_cp in CP_KEYS:
+        del CP_KEYS[id_cp]
+        audit("REVOCACION", f"Clave revocada CP {id_cp}")
+
+# =========================================================
+# BBDD JSON (MISMA QUE TU PRÁCTICA 1)
+# =========================================================
+
 def loadDB():
     try:
         with open(DB_FILE, "r", encoding="utf-8") as f:
@@ -38,31 +133,13 @@ def saveDB(db):
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(db, f, indent=4)
 
-def searchCustomer(id_cliente):
-    db = loadDB()
-    return id_cliente in db["clientes"]
-
-def addCustomer(id_cliente):
-    db = loadDB()
-    if id_cliente in db["clientes"]:
-        return False
-    db["clientes"].append(id_cliente)
-    saveDB(db)
-    return True
-
-def cargarClientes():
-    db = loadDB()
-    return db["clientes"]
-
 def cargarCPs():
     db = loadDB()
     cps = db["cps"]
     ids = [cp["id"] for cp in cps]
     return cps, ids
 
-def insertToCPsBD(id_cp, loc_cp, estado_cp):
-    if not id_cp or not loc_cp or not estado_cp:
-        return False
+def insertToCPsBD(id_cp, loc_cp, estado):
     db = loadDB()
     for cp in db["cps"]:
         if cp["id"] == id_cp:
@@ -70,7 +147,7 @@ def insertToCPsBD(id_cp, loc_cp, estado_cp):
     db["cps"].append({
         "id": id_cp,
         "loc": loc_cp,
-        "estado": estado_cp.upper()
+        "estado": estado
     })
     saveDB(db)
     return True
@@ -79,217 +156,110 @@ def updateStatusCP(id_cp, estado):
     db = loadDB()
     for cp in db["cps"]:
         if cp["id"] == id_cp:
-            cp["estado"] = estado.upper()
+            cp["estado"] = estado
             saveDB(db)
             return True
     return False
 
+# =========================================================
+# SOCKET CP ↔ CENTRAL (AUTENTICACIÓN)
+# =========================================================
+
 def attendToMonitor(peticion, id_cp, var):
-    """
-    peticion: 'AUTENTIFICACION' | 'ESTADO'
-    """
-    if peticion == "AUTENTIFICACION":
-        # ¿ya está en memoria?
-        if id_cp in CPS_IDX:
+    if peticion == "AUTENTICACION":
+        if id_cp in CP_KEYS:
+            audit("AUTENTICACION_FALLIDA", f"CP {id_cp} ya autenticado")
             return "central|ERROR"
 
-        if not insertToCPsBD(id_cp, var, "IDLE"):
-            return "central|ERROR"
+        clave = Fernet.generate_key().decode()
+        CP_KEYS[id_cp] = clave
 
+        insertToCPsBD(id_cp, var, "IDLE")
         CPS_IDX.append(id_cp)
-        return "central|OK"
+        CPS.append({"id": id_cp, "loc": var, "estado": "IDLE"})
+
+        audit("AUTENTICACION", f"CP {id_cp} autenticado correctamente")
+        return f"central|OK|{clave}"
 
     elif peticion == "ESTADO":
         if id_cp not in CPS_IDX:
             return "central|ERROR"
 
-        if not updateStatusCP(id_cp, var):
-            return "central|ERROR"
-
+        updateStatusCP(id_cp, var)
+        audit("ESTADO_CP", f"{id_cp} -> {var}")
         return "central|OK"
 
-    else:
-        if id_cp in CPS_IDX:
-            return "REGISTRADO"
-        return "DESCONOCIDO"
-
-# ---------------------------------------------------------
-#   DRIVER COMMUNICATION
-# ---------------------------------------------------------
-def topics_id(id):
-    return f"central-to-consumer-{id}"
-
-def replyToDriver(producer, respuesta, cp_id, driver_id):
-    if cp_id is None:
-        cp_id = ""
-    payload = f"central|{respuesta}|{cp_id}|{driver_id}"
-    topic_resp = topics_id(driver_id)
-    try:
-        producer.send(topic_resp, payload)
-        producer.flush(1)
-    except:
-        pass
-
-def replyToEngine(producer, peticion, cp_id, driver_id):
-    topic_resp = topics_id(cp_id)
-    payload = f"central|{peticion}|{cp_id}|{driver_id}"
-    producer.send(topic_resp, payload)
-    producer.flush(1)
-
-def attendToDriver(peticion, cp_id, driver_id, producer=None):
-    if peticion == "AUTENTIFICACION":
-        if addCustomer(driver_id):
-            replyToDriver(producer, "OK", "", driver_id)
-            return "central|OK"
-        else:
-            replyToDriver(producer, "ERROR:YA_REGISTRADO", "", driver_id)
-            return "central|ERROR"
-
-    if peticion in ("AUTORIZACION", "ESTADO", "FIN"):
-        if cp_id not in CPS_IDX:
-            replyToDriver(producer, f"{peticion}:ERROR_CP_DESCONOCIDO", cp_id, driver_id)
-            return "central|ERROR"
-
-        if peticion in ("AUTORIZACION", "ESTADO"):
-            replyToDriver(producer, f"{peticion}:ENVIADO_AL_ENGINE", cp_id, driver_id)
-
-        if producer is not None:
-            replyToEngine(producer, peticion, cp_id, driver_id)
-
-        return "central|OK"
-
-    replyToDriver(producer, "ERROR:PETICION_DESCONOCIDA", cp_id, driver_id)
     return "central|ERROR"
 
-# ---------------------------------------------------------
-#   ENGINE RESPONSES
-# ---------------------------------------------------------
-def attendToEngine(producer, respuesta, cp_id, driver_id):
-    if respuesta.isdigit():
-        segundos = int(respuesta)
-        horas = segundos / 3600
-        precio = horas * PRICE_PER_KWH
-        mensaje = f"FIN|TIEMPO:{segundos}|PRECIO:{precio:.2f}"
-        replyToDriver(producer, mensaje, cp_id, driver_id)
-        return
-    else:
-        mensaje = f"ESTADO|{respuesta}"
-        replyToDriver(producer, mensaje, cp_id, driver_id)
-        return
+# =========================================================
+# KAFKA
+# =========================================================
 
-# ---------------------------------------------------------
-#   KAFKA LOOP
-# ---------------------------------------------------------
 def create_producer(bootstrap):
     return KafkaProducer(
         bootstrap_servers=[bootstrap],
-        value_serializer=lambda s: s.encode(FORMAT),
-        linger_ms=10,
+        value_serializer=lambda v: v if isinstance(v, bytes) else v.encode(FORMAT)
     )
 
 def create_consumer(bootstrap):
     return KafkaConsumer(
         TOPIC_DTC, TOPIC_ETC,
         bootstrap_servers=[bootstrap],
-        value_deserializer=lambda m: m.decode(FORMAT),
+        value_deserializer=lambda v: v,
         auto_offset_reset="earliest",
-        enable_auto_commit=True,
-        group_id="central-group",
-        client_id="central-1",
+        group_id="central-group"
     )
 
-def receive_messages(consumer, producer):
+def receive_messages(consumer):
     for msg in consumer:
-        text = msg.value or ""
-        parts = text.split("|")
-        remitente = parts[0].lower()
-        peticion = parts[1]
-        cp_id = parts[2]
-        driver_id = parts[3]
-
-        if remitente == "driver":
-            attendToDriver(peticion, cp_id, driver_id, producer)
-        elif remitente == "engine":
-            attendToEngine(producer, peticion, cp_id, driver_id)
-
+        try:
+            raw = msg.value.decode(FORMAT)
+            audit("MENSAJE_KAFKA", raw)
+        except:
+            audit("ERROR_KAFKA", "Mensaje ilegible")
 
 def run_kafka_loop(bootstrap):
     consumer = create_consumer(bootstrap)
-    producer = create_producer(bootstrap)
-    receive_messages(consumer, producer)
+    receive_messages(consumer)
 
-# ---------------------------------------------------------
-#   SOCKET SERVER
-# ---------------------------------------------------------
+# =========================================================
+# SOCKET SERVER GENERAL
+# =========================================================
+
 def start(server):
     global CONEX_ACTIVAS
     server.listen()
     while True:
         conn, addr = server.accept()
-
         CONEX_ACTIVAS += 1
-
-        if CONEX_ACTIVAS <= MAX_CONEXIONES:
-            conn.send("1".encode(FORMAT))
-            print("NUEVA CONEXION DESDE:", addr)
-            print("CONEXIONES ACTIVAS:", CONEX_ACTIVAS)
-            threading.Thread(target=handle_client, args=(conn, addr)).start()
-        else:
-            conn.send("OOppsss... DEMASIADAS CONEXIONES".encode(FORMAT))
-            print("CONEXION RECHAZADA (LIMITE ALCANZADO):", addr)
-            conn.close()
-
+        threading.Thread(target=handle_client, args=(conn, addr)).start()
 
 def handle_client(conn, addr):
     global CONEX_ACTIVAS
-    print(f"[NUEVA CONEXION] {addr}")
-
-    connected = True
-    while connected:
+    while True:
         try:
-            # --- Recibir header ---
             msg_length = conn.recv(HEADER).decode(FORMAT)
             if not msg_length:
                 continue
 
-            # --- Recibir mensaje ---
             msg = conn.recv(int(msg_length)).decode(FORMAT)
-
-            # --- Fin de conexión ---
             if msg == FIN:
-                connected = False
                 break
 
-            # --- Procesar mensaje ---
             parts = msg.split("|")
-
             if parts[0] == "monitor":
-
-                # parts = ["monitor", peticion, id_cp, var]
-                peticion = parts[1]
-                id_cp    = parts[2]
-                var      = parts[3]
-
-                # Delegar TODA la lógica al método original
-                respuesta = attendToMonitor(peticion, id_cp, var)
-
-                # Enviar respuesta al monitor
+                respuesta = attendToMonitor(parts[1], parts[2], parts[3])
                 conn.send(respuesta.encode(FORMAT))
-
-            else:
-                conn.send("central|ERROR_ORIGEN".encode(FORMAT))
-
-        except Exception as e:
-            print(f"[ERROR handle_client]: {e}")
+        except:
             break
 
     conn.close()
     CONEX_ACTIVAS -= 1
-    print(f"CONEXION CERRADA: {addr} | ACTIVAS: {CONEX_ACTIVAS}")
 
-# ---------------------------------------------------------
-#   MAIN
-# ---------------------------------------------------------
+# =========================================================
+# MAIN
+# =========================================================
+
 def main():
     global SERVER, ADDR, CPS, CPS_IDX
 
@@ -298,8 +268,8 @@ def main():
 
     CPS, CPS_IDX = cargarCPs()
 
-    bootstrap = SERVER
-    threading.Thread(target=run_kafka_loop, args=(bootstrap,), daemon=True).start()
+    threading.Thread(target=run_kafka_loop, args=(SERVER,), daemon=True).start()
+    threading.Thread(target=run_api, daemon=True).start()
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
