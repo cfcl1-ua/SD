@@ -6,6 +6,76 @@ HEADER = 64
 FORMAT = 'utf-8'
 FIN = "FIN"
 
+
+SECRET_TOKEN = "1"
+
+
+token_actual = None
+
+def cargar_clave_aes(id_cp):
+    ruta = f"claves/{id_cp}.key"
+    try:
+        with open(ruta, 'rb') as f:
+            clave = f.read()
+            return Fernet(clave)
+    except Exception as e:
+        print(f"[ERROR] No se pudo leer la clave AES para CP {id_cp}: {e}")
+        return None
+
+def monitor_token_renovable(id_cp, ip_registry="localhost", puerto_registry=9100):
+    global token_actual, socket_activo
+    while True:
+        token = obtener_token(id_cp, ip_registry, puerto_registry)
+            if token:
+                token_actual = token
+                print("[TOKEN] Token renovado correctamente.")
+                try:
+                    if socket_activo:
+                        socket_activo.sendall(f"TOKEN#{token_actual}".encode())
+                        print("[TOKEN] Nuevo token notificado a central.")
+                except Exception as e:
+                    print(f"[ERROR] No se pudo notificar nuevo token a central: {e}")
+        else:
+            print("[TOKEN] Fallo al renovar token.")
+        time.sleep(60)
+
+
+
+
+def crear_y_guardar_clave_aes(id_cp):
+    ruta = f"claves/{id_cp}.key"
+    os.makedirs("claves", exist_ok=True)
+    if not os.path.exists(ruta):
+        clave = Fernet.generate_key()
+        with open(ruta, 'wb') as f:
+            f.write(clave)
+    with open(ruta, 'rb') as f:
+        return f.read()
+
+
+def generar_token(id_cp):
+    tiempo_actual = int(time.time())
+    payload = {
+        "id": id_cp,
+        "exp": tiempo_actual + 60
+    }
+    return jwt.encode(payload, SECRET_TOKEN, algorithm="HS256")
+
+
+
+
+def obtener_token(id_cp, ip_registry="localhost", puerto_registry=9100):
+    url = f"https://{ip_registry}:{puerto_registry}/token"
+    try:
+        response = requests.post(url, json={"id": id_cp}, verify=False, timeout=5)
+        if response.status_code == 200:
+            return response.json()["token"]
+        else:
+            print(f"[TOKEN] Error {response.status_code}: {response.text}")
+    except Exception as e:
+        print(f"[ERROR] No se pudo obtener token: {e}")
+    return None
+
 #Mensaje que mandara al servidor 
 def send(msg, client_socket):
     message = msg.encode(FORMAT)
@@ -28,8 +98,47 @@ class Monitor:
         self.addr=(SERVER, PORT)
         self.addr_engine=(ENGINE, ENGINE_PORT)
         self.sock=None
+        self.token = None
+        self.fernet = None
         
         
+    
+        
+    def autenticar_registry(self):
+                
+        print("[REGISTRY] Solicitando token de autenticación...")
+        self.token = obtener_token(self.ID)
+        if not self.token:
+            print("[REGISTRY] No se pudo obtener token")
+            return False
+
+
+        print("[REGISTRY] Token recibido")
+        self.fernet = cargar_clave_aes(self.ID)
+        if not self.fernet:
+            clave = crear_y_guardar_clave_aes(self.ID)
+            self.fernet = Fernet(clave)
+
+
+        hilo_token = threading.Thread(
+        target=monitor_token_renovable,
+        args=(self.ID,),
+        daemon=True
+        )
+        hilo_token.start()
+        if not self.fernet:
+            print("[REGISTRY] No se encontró clave AES, generando nueva...")
+            clave = Fernet.generate_key()
+            self.fernet = Fernet(clave)
+            try:
+                import os
+                os.makedirs("claves", exist_ok=True)
+                with open(f"claves/{self.ID}.key", "wb") as f:
+                    f.write(clave)
+            except Exception as e:
+                print(f"[ERROR] No se pudo guardar la clave AES: {e}")
+                return False
+        return True
     #conecta con central
     def conectar_central(self):
         print("[DEBUG] Creando socket del Monitor...")
@@ -54,7 +163,7 @@ class Monitor:
             msg_length=self.sock.recv(HEADER).decode(FORMAT)
             #El CP se registra a la base de datos o ya esta registrado
             if msg_length == "DESCONOCIDO":
-                msg=f"monitor|AUTENTIFICACION|{self.ID}|{self.LOC}"
+                msg=f"monitor|AUTENTIFICACION|{self.ID}|{self.LOC}|{self.token}|{self.fernet}"
                 send(msg, self.sock)
                 status=self.sock.recv(2048).decode(FORMAT)
                 print(status)
