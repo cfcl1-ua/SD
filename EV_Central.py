@@ -16,7 +16,6 @@ PORT = 5050
 FORMAT = "utf-8"
 FIN = "FIN"
 MAX_CONEXIONES = 5
-PRICE_PER_KWH = 0.28
 
 TOPIC_DTC = "driver-to-central"
 TOPIC_ETC = "engine-to-central"
@@ -30,17 +29,17 @@ DB_FILE = "db.json"
 SERVER = "localhost"
 ADDR = (SERVER, PORT)
 
-CPS = []               # CPs registrados
-CPS_IDX = []           # IDs CPs
-CP_KEYS = {}           # id_cp -> clave simétrica
+CPS = []
+CPS_IDX = []
+CP_KEYS = {}
 
-CLIMATE_ALERTS = {}    # localizacion -> OK | KO
-AUDIT_LOG = []         # auditoría en memoria
+CLIMATE_ALERTS = {}
+AUDIT_LOG = []
 
 CONEX_ACTIVAS = 0
 
 # =========================================================
-# FLASK API (inspirada en API_Central_ANTONIO)
+# FLASK API
 # =========================================================
 
 app = Flask(__name__)
@@ -67,7 +66,6 @@ def recibir_clima():
 
     CLIMATE_ALERTS[loc] = estado
     audit("ALERTA_CLIMATOLOGICA", f"{loc} -> {estado}", request.remote_addr)
-
     return jsonify({"resultado": "OK"})
 
 @app.route("/cps")
@@ -102,24 +100,7 @@ def run_api():
     app.run(host="0.0.0.0", port=8000, debug=False)
 
 # =========================================================
-# CIFRADO SIMÉTRICO CP ↔ CENTRAL
-# =========================================================
-
-def encrypt_msg(id_cp, msg):
-    f = Fernet(CP_KEYS[id_cp].encode())
-    return f.encrypt(msg.encode())
-
-def decrypt_msg(id_cp, msg):
-    f = Fernet(CP_KEYS[id_cp].encode())
-    return f.decrypt(msg).decode()
-
-def revoke_cp(id_cp):
-    if id_cp in CP_KEYS:
-        del CP_KEYS[id_cp]
-        audit("REVOCACION", f"Clave revocada CP {id_cp}")
-
-# =========================================================
-# BBDD JSON (MISMA QUE TU PRÁCTICA 1)
+# BBDD JSON
 # =========================================================
 
 def loadDB():
@@ -162,11 +143,14 @@ def updateStatusCP(id_cp, estado):
     return False
 
 # =========================================================
-# SOCKET CP ↔ CENTRAL (AUTENTICACIÓN)
+# SOCKET CP ↔ CENTRAL
 # =========================================================
 
-def attendToMonitor(peticion, id_cp, var):
-    if peticion == "AUTENTICACION":
+def attendToMonitor(peticion, id_cp, *args):
+    # Autenticación inicial (acepta variaciones del monitor)
+    if peticion in ("AUTENTICACION", "AUTENTIFICACION", "PETICION"):
+        loc = args[0] if len(args) > 0 else "UNKNOWN"
+
         if id_cp in CP_KEYS:
             audit("AUTENTICACION_FALLIDA", f"CP {id_cp} ya autenticado")
             return "central|ERROR"
@@ -174,19 +158,26 @@ def attendToMonitor(peticion, id_cp, var):
         clave = Fernet.generate_key().decode()
         CP_KEYS[id_cp] = clave
 
-        insertToCPsBD(id_cp, var, "IDLE")
+        insertToCPsBD(id_cp, loc, "IDLE")
         CPS_IDX.append(id_cp)
-        CPS.append({"id": id_cp, "loc": var, "estado": "IDLE"})
+        CPS.append({
+            "id": id_cp,
+            "loc": loc,
+            "estado": "IDLE"
+        })
 
         audit("AUTENTICACION", f"CP {id_cp} autenticado correctamente")
         return f"central|OK|{clave}"
 
+    # Actualización de estado
     elif peticion == "ESTADO":
+        estado = args[0] if len(args) > 0 else "UNKNOWN"
+
         if id_cp not in CPS_IDX:
             return "central|ERROR"
 
-        updateStatusCP(id_cp, var)
-        audit("ESTADO_CP", f"{id_cp} -> {var}")
+        updateStatusCP(id_cp, estado)
+        audit("ESTADO_CP", f"{id_cp} -> {estado}")
         return "central|OK"
 
     return "central|ERROR"
@@ -194,12 +185,6 @@ def attendToMonitor(peticion, id_cp, var):
 # =========================================================
 # KAFKA
 # =========================================================
-
-def create_producer(bootstrap):
-    return KafkaProducer(
-        bootstrap_servers=[bootstrap],
-        value_serializer=lambda v: v if isinstance(v, bytes) else v.encode(FORMAT)
-    )
 
 def create_consumer(bootstrap):
     return KafkaConsumer(
@@ -232,7 +217,11 @@ def start(server):
     while True:
         conn, addr = server.accept()
         CONEX_ACTIVAS += 1
-        threading.Thread(target=handle_client, args=(conn, addr)).start()
+        threading.Thread(
+            target=handle_client,
+            args=(conn, addr),
+            daemon=True
+        ).start()
 
 def handle_client(conn, addr):
     global CONEX_ACTIVAS
@@ -248,7 +237,7 @@ def handle_client(conn, addr):
 
             parts = msg.split("|")
             if parts[0] == "monitor":
-                respuesta = attendToMonitor(parts[1], parts[2], parts[3])
+                respuesta = attendToMonitor(parts[1], parts[2], *parts[3:])
                 conn.send(respuesta.encode(FORMAT))
         except:
             break
@@ -268,8 +257,16 @@ def main():
 
     CPS, CPS_IDX = cargarCPs()
 
-    threading.Thread(target=run_kafka_loop, args=(SERVER,), daemon=True).start()
-    threading.Thread(target=run_api, daemon=True).start()
+    threading.Thread(
+        target=run_kafka_loop,
+        args=(SERVER,),
+        daemon=True
+    ).start()
+
+    threading.Thread(
+        target=run_api,
+        daemon=True
+    ).start()
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
