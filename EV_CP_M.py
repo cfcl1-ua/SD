@@ -77,8 +77,8 @@ def obtener_token(id_cp, ip_registry="localhost", puerto_registry=9100):
     return None
 
 #Mensaje que mandara al servidor 
-def send(msg, client_socket):
-    message = msg.encode(FORMAT)
+def send(msg, client_socket, fernet):
+    message = fernet.encrypt(msg.encode(FORMAT))
     msg_length = len(message)
     send_length = str(msg_length).encode(FORMAT)
     send_length += b' ' * (HEADER - len(send_length)) 
@@ -146,7 +146,7 @@ class Monitor:
         self.sock.connect(self.addr)
         
         msg=f"monitor|PETICION|{self.ID}|IDLE"
-        send(msg, self.sock)
+        send(msg, self.sock, self.fernet)
         
         response=self.sock.recv(2048).decode(FORMAT)
         #mensaje de confirmacion de central
