@@ -1,6 +1,11 @@
 import socket
 import sys
 import time
+import requests
+import jwt
+from cryptography.fernet import Fernet
+import os
+import threading
 
 HEADER = 64
 FORMAT = 'utf-8'
@@ -9,7 +14,7 @@ FIN = "FIN"
 
 SECRET_TOKEN = "1"
 
-
+socket_activo = None
 token_actual = None
 
 def cargar_clave_aes(id_cp):
@@ -26,15 +31,15 @@ def monitor_token_renovable(id_cp, ip_registry="localhost", puerto_registry=9100
     global token_actual, socket_activo
     while True:
         token = obtener_token(id_cp, ip_registry, puerto_registry)
-            if token:
-                token_actual = token
-                print("[TOKEN] Token renovado correctamente.")
-                try:
-                    if socket_activo:
-                        socket_activo.sendall(f"TOKEN#{token_actual}".encode())
-                        print("[TOKEN] Nuevo token notificado a central.")
-                except Exception as e:
-                    print(f"[ERROR] No se pudo notificar nuevo token a central: {e}")
+        if token:
+            token_actual = token
+            print("[TOKEN] Token renovado correctamente.")
+            try:
+                if socket_activo:
+                    socket_activo.sendall(f"TOKEN#{token_actual}".encode())
+                    print("[TOKEN] Nuevo token notificado a central.")
+            except Exception as e:
+                print(f"[ERROR] No se pudo notificar nuevo token a central: {e}")
         else:
             print("[TOKEN] Fallo al renovar token.")
         time.sleep(60)
@@ -65,9 +70,9 @@ def generar_token(id_cp):
 
 
 def obtener_token(id_cp, ip_registry="localhost", puerto_registry=9100):
-    url = f"https://{ip_registry}:{puerto_registry}/token"
+    url = f"http://127.0.0.1:8000/token"
     try:
-        response = requests.post(url, json={"id": id_cp}, verify=False, timeout=5)
+        response = requests.post(url, json={"id": id_cp}, timeout=5)
         if response.status_code == 200:
             return response.json()["token"]
         else:
@@ -188,7 +193,7 @@ class Monitor:
             while True:
                 
                 msg_stat=f"ENGINE|{self.ID}|ok"
-                send(msg_stat, client_engine)
+                send(msg_stat, client_engine, self.fernet)
                 status=client_engine.recv(2048).decode(FORMAT)
                 time.sleep(1)
                   
@@ -196,7 +201,7 @@ class Monitor:
                 if(status == "ENGINE|ERROR"):
                       
                     msg_stat=f"monitor|ESTADO|{self.ID}|ERROR"
-                    send(msg_stat, self.sock)
+                    send(msg_stat, self.sock, self.fernet)
                       
                     print("Averia reportada")
                     break
@@ -204,21 +209,21 @@ class Monitor:
                 elif (status=="ENGINE|CHARGING"):
                       
                     msg_stat=f"monitor|ESTADO|{self.ID}|CHARGING"
-                    send(msg_stat, self.sock)
+                    send(msg_stat, self.sock, self.fernet)
                     #El engine no envia mas mensajes por lo tanto esta cerrado
                 elif not status:
                     print("Se cerro la conexion")
                     msg_stat=f"monitor|ESTADO|{self.ID}|ERROR"
-                    send(msg_stat, self.sock)
+                    send(msg_stat, self.sock, self.fernet)
                       #El estado funciona perfectamente y no esta en uso
                 else:
                     msg_stat=f"monitor|ESTADO|{self.ID}|IDLE"
-                    send(msg_stat, self.sock)
+                    send(msg_stat, self.sock, self.fernet)
         #Si el monitor no logra conectarse al engine se interpretara que el engine esta desconectado
         except socket.timeout:
             print("No se pudo conectar al Engine.")
             msg_stat=f"monitor|ESTADO|{self.ID}|OFFLINE"
-            send(msg_stat, self.sock)
+            send(msg_stat, self.sock, self.fernet)
              
         except ConnectionRefusedError:
             print("El servidor no está disponible.")

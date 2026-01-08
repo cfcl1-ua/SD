@@ -14,7 +14,7 @@ import json
 
 SECRET_KEY = "evregistry2425"   # Clave para firmar JWT
 CLAVES_DIR = "claves"            # Directorio claves AES
-DB_FILE = "registry.json"       # Archivo JSON como base de datos
+DB_FILE = "db.json"       # Archivo JSON como base de datos
 
 # =========================
 # APP FASTAPI
@@ -94,16 +94,20 @@ def registrar_cp(cp: CPRegistro):
     db = cargar_db()
     if cp.id in db:
         raise HTTPException(status_code=409, detail="CP ya registrado")
-
-    db[cp.id] = {
-        "id": cp.id,
-        "location": cp.location,
-        "registrado": True
-    }
-    guardar_db(db)
-
+    
     clave_aes = crear_y_guardar_clave_aes(cp.id)
     token = generar_token(cp.id)
+
+    db["cps"].append({
+        "id": cp.id,
+        "location": cp.location,
+        "registrado": True,
+        "estado":"OFFLINE"
+        "token": token,
+        "aes_key": clave_aes
+    })
+    guardar_db(db)
+
 
     return {
         "status": "registrado",
@@ -158,6 +162,4 @@ if __name__ == "__main__":
         app,
         host="0.0.0.0",
         port=9100,
-        ssl_keyfile="key.pem",
-        ssl_certfile="cert.pem"
     )

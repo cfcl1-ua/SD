@@ -87,6 +87,7 @@ if __name__ == "__main__":
         
         Punto=ChargingPoint(args.id, args.localizacion, ip, int(puerto), ip_engine, int(port_engine), ip_broker, int(port_broker))
             
+        Punto.Monitor.autenticar_registry()
         #Lo conectamos con central
         activo=Punto.Monitor.conectar_central()
         
