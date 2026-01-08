@@ -2,7 +2,8 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>EV Central - Charging Points</title>
+    <title>EV Central - Estado de Charging Points</title>
+
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -33,12 +34,12 @@
             color: white;
         }
 
-        .ACTIVE {
+        .OK {
             color: green;
             font-weight: bold;
         }
 
-        .OFF {
+        .KO {
             color: red;
             font-weight: bold;
         }
@@ -65,12 +66,12 @@
             <th>ID</th>
             <th>Ubicación</th>
             <th>Estado</th>
-            <th>Potencia (kW)</th>
-            <th>Coches conectados</th>
-            <th>Última actualización</th>
         </tr>
     </thead>
     <tbody id="cp-table">
+        <tr>
+            <td colspan="3">Cargando puntos de recarga...</td>
+        </tr>
     </tbody>
 </table>
 
@@ -81,29 +82,41 @@
 <script>
     async function loadChargingPoints() {
         try {
-            const response = await fetch("../charging_points.json");
-            const cps = await response.json();
+            const response = await fetch("http://127.0.0.1:8000/estado");
+            const data = await response.json();
 
+            const cps = data.cps || [];
             const table = document.getElementById("cp-table");
             table.innerHTML = "";
 
+            if (cps.length === 0) {
+                table.innerHTML = `
+                    <tr>
+                        <td colspan="3">No hay puntos de recarga</td>
+                    </tr>
+                `;
+                return;
+            }
+
             cps.forEach(cp => {
                 const row = document.createElement("tr");
-
                 row.innerHTML = `
-                    <td>${cp.id}</td>
-                    <td>${cp.location}</td>
-                    <td class="${cp.status || 'UNKNOWN'}">${cp.status || 'UNKNOWN'}</td>
-                    <td>${cp.current_power}</td>
-                    <td>${cp.connected_cars}</td>
-                    <td>${cp.last_update}</td>
+                    <td>${cp.id ?? "-"}</td>
+                    <td>${cp.location || cp.localizacion || "-"}</td>
+                    <td class="${cp.estado || 'UNKNOWN'}">
+                        ${cp.estado || 'UNKNOWN'}
+                    </td>
                 `;
-
                 table.appendChild(row);
             });
 
-        } catch (error) {
-            console.error("Error cargando charging points:", error);
+        } catch (err) {
+            console.error("Error conectando con la API:", err);
+            document.getElementById("cp-table").innerHTML = `
+                <tr>
+                    <td colspan="3">No se puede conectar con la central</td>
+                </tr>
+            `;
         }
     }
 
@@ -113,3 +126,4 @@
 
 </body>
 </html>
+
