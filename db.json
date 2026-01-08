@@ -5,9 +5,11 @@
     ],
     "cps": [
         {
-            "id": "90",
-            "loc": "tabarca",
-            "estado": "CHARGING"
+            "id": "9",
+            "location": "murcia",
+            "registrado": true,
+            "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjkiLCJleHAiOjE3Njc4ODk0NTguMjY3MDg4NH0.SCy5UGjpOsB3ybzWj63dDRnsxkHOLWpG26XDGXuT1G4",
+            "aes_key": "N4kAaiXsGcREdbY4lYvo97Nik9UH9w38l_Wf7PsigPM="
         }
-    ]
+    ]  
 }
