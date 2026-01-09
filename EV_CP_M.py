@@ -55,7 +55,8 @@ def crear_y_guardar_clave_aes(id_cp):
         with open(ruta, 'wb') as f:
             f.write(clave)
     with open(ruta, 'rb') as f:
-        return f.read()
+        clave=f.read()
+    return clave
 
 
 def generar_token(id_cp):
@@ -70,7 +71,7 @@ def generar_token(id_cp):
 
 
 def obtener_token(id_cp, ip_registry="localhost", puerto_registry=9100):
-    url = f"http://127.0.0.1:8000/token"
+    url = f"http://172.21.42.11:8000/token"
     try:
         response = requests.post(url, json={"id": id_cp}, timeout=5)
         if response.status_code == 200:
@@ -123,6 +124,8 @@ class Monitor:
         if not self.fernet:
             clave = crear_y_guardar_clave_aes(self.ID)
             self.fernet = Fernet(clave)
+        else:
+            self.fernet=Fernet(self.fernet)
 
 
         hilo_token = threading.Thread(

@@ -102,7 +102,7 @@ def registrar_cp(cp: CPRegistro):
         "id": cp.id,
         "location": cp.location,
         "registrado": True,
-        "estado":"OFFLINE"
+        "estado":"OFFLINE",
         "token": token,
         "aes_key": clave_aes
     })

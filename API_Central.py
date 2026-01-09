@@ -94,6 +94,9 @@ def actualizar_estado_cp(id_cp):
 
     return jsonify({"ok": "Estado actualizado"})
 
+def generar_token(cp_id):
+    return str(uuid.uuid4())
+
 @app.post("/token")
 def emitir_token(cp: CPId):
     db = cargar_db()
