@@ -1,16 +1,20 @@
 import requests
 import threading
 import time
+import os
+import json
 
 # =========================================================
 # CONFIGURACIÓN
 # =========================================================
 
-OPENWEATHER_API_KEY = "TU_API_KEY_AQUI"
+OPENWEATHER_API_KEY = "d1f046b4561bf94314e5a30c6c6bac3c"
 UNITS = "metric"                     # Celsius
 CHECK_INTERVAL = 4                   # segundos
 
-API_CENTRAL_URL = "http://localhost:8000/clima"
+DB_FILE = "db.json"
+
+API_CENTRAL_URL = "http://127.0.0.1:8000/clima"
 
 # =========================================================
 # ESTADO GLOBAL
@@ -30,8 +34,13 @@ def consultar_tiempo(ciudad):
             "https://api.openweathermap.org/data/2.5/weather"
             f"?q={ciudad}&appid={OPENWEATHER_API_KEY}&units={UNITS}"
         )
+        
         response = requests.get(url, timeout=3)
         data = response.json()
+        
+        if "main" not in data:
+            print(f"[ERROR] No se pudo consultar {ciudad}: {data.get('message', 'sin datos')}")
+            return "ERROR", None
 
         temp = data["main"]["temp"]
         estado = "KO" if temp < 0 else "OK"
@@ -71,6 +80,8 @@ def ciclo_clima():
 
             LOCATIONS[ciudad]["temperatura"] = temp
             LOCATIONS[ciudad]["estado"] = estado_nuevo
+            
+            guardar_clima(ciudad, estado_nuevo, temp)
 
             # Notificar solo si cambia o para refrescar estado
             if estado_nuevo != estado_anterior:
@@ -78,11 +89,44 @@ def ciclo_clima():
 
         time.sleep(CHECK_INTERVAL)
 
+def guardar_clima(ciudad, estado, temperatura):
+    # 1️⃣ Cargar DB
+    if os.path.exists(DB_FILE):
+        with open(DB_FILE, "r") as f:
+            db = json.load(f)
+    else:
+        db = {"clientes": [], "cps": [], "climas": []}
+
+    # 2️⃣ Crear la tabla "climas" si no existe
+    if "climas" not in db:
+        db["climas"] = []
+
+    # 3️⃣ Buscar si ya existe la ciudad
+    for c in db["climas"]:
+        if c["ciudad"].lower() == ciudad.lower():
+            # Actualizar
+            c["estado"] = estado
+            c["temperatura"] = temperatura
+            break
+    else:
+        # Si no existe, agregar nuevo
+        db["climas"].append({
+            "ciudad": ciudad,
+            "estado": estado,
+            "temperatura": temperatura,
+        })
+
+    # 4️⃣ Guardar DB
+    with open(DB_FILE, "w") as f:
+        json.dump(db, f, indent=4)
+
+    print(f"[EV_W] Clima guardado: {ciudad} -> {estado} ({temperatura}°C)")
 # =========================================================
 # MENÚ DE CONTROL (EN CALIENTE)
 # =========================================================
 
 def menu():
+    global RUNNING
     print("\n[EV_W] Weather Control Office iniciado")
     print("Comandos:")
     print("  add <ciudad>     -> Añadir localización")
@@ -118,7 +162,6 @@ def menu():
                 print(f"- {ciudad}: {info['estado']} ({info['temperatura']}°C)")
 
         elif parts[0] == "exit":
-            global RUNNING
             RUNNING = False
             break
 

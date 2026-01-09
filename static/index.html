@@ -75,12 +75,13 @@
         <tr>
             <th>ID</th>
             <th>Ubicación</th>
+	    <th>Temperatura (°C)</th>
             <th>Estado</th>
         </tr>
     </thead>
     <tbody id="cp-table">
         <tr>
-            <td colspan="3">Cargando puntos de recarga...</td>
+            <td colspan="4">Cargando puntos de recarga...</td>
         </tr>
     </tbody>
 </table>
@@ -112,11 +113,13 @@
 
 		const estado = cp.estado || "UNKNOWN";
                 const ubicacion = cp.location || cp.localizacion || cp.loc || "-";
+		const temp = cp.temperatura !== undefined ? cp.temperatura : "-";
 
                 const row = document.createElement("tr");
                 row.innerHTML = `
                     <td>${cp.id ?? "-"}</td>
                     <td>${cp.location || cp.localizacion || "-"}</td>
+		    <td>${temp}</td>
                     <td class="${cp.estado || 'UNKNOWN'}">
                         ${cp.estado || 'UNKNOWN'}
                     </td>

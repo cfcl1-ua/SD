@@ -46,9 +46,16 @@ def buscar_cp(cps, id_cp):
 
 
 @app.route("/estado", methods=["GET"])
-def obtener_cps():
+def Estado():
     db = cargar_db()
-    return jsonify({"cps": db.get("cps", [])})
+    cps = db.get("cps", [])
+    temperaturas = db.get("climas", [])
+    
+    for cp in cps:
+        temp = next((t["temperatura"] for t in temperaturas if t["ciudad"].lower() == cp["location"].lower()), None)
+        cp["temperatura"] = temp if temp is not None else "-"
+    
+    return  {"cps": cps}
 
 
 @app.route("/api/cps/<id_cp>", methods=["GET"])
@@ -109,6 +116,14 @@ def obtener_cliente(id_cliente):
 
     return jsonify({"id": id_cliente})
 
+# ==============================
+# CLIMA
+# ==============================
+@app.route("/clima", methods=["PUT"])
+def recibir_clima():
+    data = request.json
+    print("Notificación recibida:", data)
+    return jsonify({"status": "ok"})
 
 # ==============================
 # ARRANQUE
