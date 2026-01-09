@@ -3,6 +3,10 @@ from flask_cors import CORS
 import json
 import threading
 import os
+from pydantic import BaseModel
+
+class CPId(BaseModel):
+    id: str
 
 app = Flask(__name__)
 
