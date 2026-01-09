@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import json
 import threading
@@ -44,11 +44,11 @@ def buscar_cp(cps, id_cp):
 # CPs
 # ==============================
 
-@app.route("/api/cps", methods=["GET"])
+
+@app.route("/estado", methods=["GET"])
 def obtener_cps():
-    print("gggg")
     db = cargar_db()
-    return jsonify(db["cps"])
+    return jsonify({"cps": db.get("cps", [])})
 
 
 @app.route("/api/cps/<id_cp>", methods=["GET"])
@@ -86,6 +86,9 @@ def actualizar_estado_cp(id_cp):
 
     return jsonify({"ok": "Estado actualizado"})
 
+@app.route("/")
+def index():
+    return send_from_directory("static", "index.html")
 
 # ==============================
 # CLIENTES

@@ -4,12 +4,21 @@
         "32"
     ],
     "cps": [
-        {
-            "id": "9",
-            "location": "murcia",
-            "registrado": true,
-            "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjkiLCJleHAiOjE3Njc4ODk0NTguMjY3MDg4NH0.SCy5UGjpOsB3ybzWj63dDRnsxkHOLWpG26XDGXuT1G4",
-            "aes_key": "N4kAaiXsGcREdbY4lYvo97Nik9UH9w38l_Wf7PsigPM="
-        }
+      {
+        "id": "9",
+        "location": "murcia",
+        "registrado": true,
+        "estado": "OFFLINE",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjkiLCJleHAiOjE3Njc4ODk0NTguMjY3MDg4NH0.SCy5UGjpOsB3ybzWj63dDRnsxkHOLWpG26XDGXuT1G4",
+        "aes_key": "N4kAaiXsGcREdbY4lYvo97Nik9UH9w38l_Wf7PsigPM="
+      },
+      {
+        "id": "14",
+        "location": "alicante",
+        "registrado": true,
+        "estado": "CHARGING",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjkiLCJleHAiOjE3Njc4ODk0NTguMjY3MDg4NH0.SCy5UGjpOsB3ybzWj63dDRnsxkHOLWpG26XDGXuT1G4",
+        "aes_key": "N4kAaiXsGcREdbY4lYvo97Nik9UH9w38l_Wf7PsigPM="
+      }
     ]  
 }

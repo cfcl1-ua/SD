@@ -34,17 +34,27 @@
             color: white;
         }
 
-        .OK {
+        .CHARGING {
             color: green;
             font-weight: bold;
         }
 
-        .KO {
+        .IDLE {
+            color: blue;
+            font-weight: bold;
+        }
+
+        .ERROR {
             color: red;
             font-weight: bold;
         }
 
-        .UNKNOWN {
+	.OFFLINE {
+            color: grey;
+            font-weight: bold;
+        }
+
+	.UNKNOWN {
             color: orange;
             font-weight: bold;
         }
@@ -99,6 +109,10 @@
             }
 
             cps.forEach(cp => {
+
+		const estado = cp.estado || "UNKNOWN";
+                const ubicacion = cp.location || cp.localizacion || cp.loc || "-";
+
                 const row = document.createElement("tr");
                 row.innerHTML = `
                     <td>${cp.id ?? "-"}</td>
