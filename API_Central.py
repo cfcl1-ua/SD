@@ -52,8 +52,10 @@ def Estado():
     temperaturas = db.get("climas", [])
     
     for cp in cps:
+        estado=cp["estado"]
         temp = next((t["temperatura"] for t in temperaturas if t["ciudad"].lower() == cp["location"].lower()), None)
         cp["temperatura"] = temp if temp is not None else "-"
+        cp["estado"] = estado if temp > 0 else "ERROR"
     
     return  {"cps": cps}
 
@@ -71,12 +73,7 @@ def obtener_cp(id_cp):
 
 @app.route("/api/cps/<id_cp>/estado", methods=["PUT"])
 def actualizar_estado_cp(id_cp):
-    """
-    JSON esperado:
-    {
-        "estado": "OK" | "ERROR" | "OFF"
-    }
-    """
+   
     data = request.json
     if not data or "estado" not in data:
         return jsonify({"error": "Campo 'estado' requerido"}), 400
@@ -92,6 +89,18 @@ def actualizar_estado_cp(id_cp):
         guardar_db(db)
 
     return jsonify({"ok": "Estado actualizado"})
+
+@app.post("/token")
+def emitir_token(cp: CPId):
+    db = cargar_db()
+    if cp.id not in db:
+        raise HTTPException(status_code=403, detail="CP no registrado")
+
+    token = generar_token(cp.id)
+    db[cp.id]["token"] = token
+    guardar_db(db)
+
+    return {"token": token}
 
 @app.route("/")
 def index():
