@@ -3,25 +3,26 @@ import threading
 import time
 import os
 import json
-
+import argparse
+# d1f046b4561bf94314e5a30c6c6bac3c
 # =========================================================
-# CONFIGURACIÓN
+# CONFIGURACIÓN (parametrizable, sin hardcodear)
 # =========================================================
 
-OPENWEATHER_API_KEY = "d1f046b4561bf94314e5a30c6c6bac3c"
-UNITS = "metric"                     # Celsius
-CHECK_INTERVAL = 4                   # segundos
-
+UNITS = "metric"        # Celsius
+CHECK_INTERVAL = 4      # segundos entre consultas
 DB_FILE = "db.json"
 
-API_CENTRAL_URL = "http://127.0.0.1:8000/clima"
+# Se rellenan en main() con los argumentos de línea de comandos
+OPENWEATHER_API_KEY = ""
+API_CENTRAL_URL = ""
 
 # =========================================================
 # ESTADO GLOBAL
 # =========================================================
 
-LOCATIONS = {}       # ciudad -> {"estado": OK/KO, "temperatura": float}
-
+# ciudad -> {"estado": "OK"/"KO"/"ERROR", "temperatura": float}
+LOCATIONS = {}
 RUNNING = True
 
 # =========================================================
@@ -34,22 +35,23 @@ def consultar_tiempo(ciudad):
             "https://api.openweathermap.org/data/2.5/weather"
             f"?q={ciudad}&appid={OPENWEATHER_API_KEY}&units={UNITS}"
         )
-        
-        response = requests.get(url, timeout=3)
+        response = requests.get(url, timeout=5)
         data = response.json()
-        
+
         if "main" not in data:
-            print(f"[ERROR] No se pudo consultar {ciudad}: {data.get('message', 'sin datos')}")
+            print(f"[EV_W][ERROR] No se pudo consultar {ciudad}: {data.get('message', 'sin datos')}")
             return "ERROR", None
 
         temp = data["main"]["temp"]
         estado = "KO" if temp < 0 else "OK"
-
         return estado, temp
 
+    except requests.exceptions.ConnectionError:
+        print(f"[EV_W][ERROR] Sin conexión a OpenWeather al consultar {ciudad}")
+        return "ERROR", None
     except Exception as e:
-        print(f"[EV_W][ERROR] No se pudo consultar {ciudad}: {e}")
-        return "KO", None
+        print(f"[EV_W][ERROR] Error inesperado consultando {ciudad}: {e}")
+        return "ERROR", None
 
 # =========================================================
 # NOTIFICACIÓN A EV_CENTRAL
@@ -61,12 +63,16 @@ def notificar_central(ciudad, estado, temperatura):
         "estado": estado,
         "temperatura": temperatura
     }
-
     try:
-        requests.put(API_CENTRAL_URL, json=payload, timeout=3)
-        print(f"[EV_W] Notificado a Central: {ciudad} -> {estado} ({temperatura}°C)")
+        response = requests.post(API_CENTRAL_URL, json=payload, timeout=3)
+        if response.status_code == 200:
+            print(f"[EV_W] Notificado a Central: {ciudad} -> {estado} ({temperatura}°C)")
+        else:
+            print(f"[EV_W][ERROR] Central respondió {response.status_code} al notificar {ciudad}")
+    except requests.exceptions.ConnectionError:
+        print(f"[EV_W][ERROR] Imposible conectar con Central. ¿Está arrancada?")
     except Exception as e:
-        print(f"[EV_W][ERROR] No se pudo notificar a Central: {e}")
+        print(f"[EV_W][ERROR] Error notificando a Central: {e}")
 
 # =========================================================
 # CICLO PRINCIPAL DE CONTROL CLIMÁTICO
@@ -76,57 +82,61 @@ def ciclo_clima():
     while RUNNING:
         for ciudad in list(LOCATIONS.keys()):
             estado_nuevo, temp = consultar_tiempo(ciudad)
+
+            # Solo actuar si obtuvimos datos válidos
+            if estado_nuevo == "ERROR":
+                continue
+
             estado_anterior = LOCATIONS[ciudad]["estado"]
+            temp_anterior   = LOCATIONS[ciudad]["temperatura"]
 
             LOCATIONS[ciudad]["temperatura"] = temp
-            LOCATIONS[ciudad]["estado"] = estado_nuevo
-            
-            guardar_clima(ciudad, estado_nuevo, temp)
+            LOCATIONS[ciudad]["estado"]      = estado_nuevo
 
-            # Notificar solo si cambia o para refrescar estado
+            # Guardar en BD solo si algo cambió
+            if estado_nuevo != estado_anterior or temp != temp_anterior:
+                guardar_clima(ciudad, estado_nuevo, temp)
+
+            # Notificar a Central solo si el estado OK/KO cambia
             if estado_nuevo != estado_anterior:
+                print(f"[EV_W] Cambio de estado en {ciudad}: {estado_anterior} -> {estado_nuevo} ({temp}°C)")
                 notificar_central(ciudad, estado_nuevo, temp)
 
         time.sleep(CHECK_INTERVAL)
 
+# =========================================================
+# PERSISTENCIA EN BD
+# =========================================================
+
 def guardar_clima(ciudad, estado, temperatura):
-    # 1️⃣ Cargar DB
-    if os.path.exists(DB_FILE):
-        with open(DB_FILE, "r") as f:
-            db = json.load(f)
-    else:
-        db = {"clientes": [], "cps": [], "climas": []}
+    try:
+        if os.path.exists(DB_FILE):
+            with open(DB_FILE, "r", encoding="utf-8") as f:
+                db = json.load(f)
+        else:
+            db = {"clientes": [], "cps": [], "climas": []}
 
-    # 2️⃣ Crear la tabla "climas" si no existe
-    if "climas" not in db:
-        db["climas"] = []
-        
-    cambiado=False
+        if "climas" not in db:
+            db["climas"] = []
 
-    # 3️⃣ Buscar si ya existe la ciudad
-    for c in db["climas"]:
-        if c["ciudad"].lower() == ciudad.lower():
-            # Actualizar
-            if c["estado"] != estado or c["temperatura"] != temperatura:
-                c["estado"] = estado
+        for c in db["climas"]:
+            if c["ciudad"].lower() == ciudad.lower():
+                c["estado"]      = estado
                 c["temperatura"] = temperatura
-                cambiado = True
-                
-            break
-    else:
-        # Si no existe, agregar nuevo
-        db["climas"].append({
-            "ciudad": ciudad,
-            "estado": estado,
-            "temperatura": temperatura,
-        })
+                break
+        else:
+            db["climas"].append({
+                "ciudad":      ciudad,
+                "estado":      estado,
+                "temperatura": temperatura
+            })
 
-    # 4️⃣ Guardar DB
-    if cambiado:            
-        with open(DB_FILE, "w") as f:
-            json.dump(db, f, indent=4)
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(db, f, indent=4, ensure_ascii=False)
 
-        print(f"[EV_W] Clima guardado: {ciudad} -> {estado} ({temperatura}°C)")
+    except Exception as e:
+        print(f"[EV_W][ERROR] No se pudo guardar en BD: {e}")
+
 # =========================================================
 # MENÚ DE CONTROL (EN CALIENTE)
 # =========================================================
@@ -134,51 +144,84 @@ def guardar_clima(ciudad, estado, temperatura):
 def menu():
     global RUNNING
     print("\n[EV_W] Weather Control Office iniciado")
+    print(f"  Central : {API_CENTRAL_URL}")
     print("Comandos:")
-    print("  add <ciudad>     -> Añadir localización")
-    print("  del <ciudad>     -> Eliminar localización")
-    print("  list             -> Ver estado")
-    print("  exit             -> Salir\n")
+    print("  add <ciudad>  -> Añadir localización")
+    print("  del <ciudad>  -> Eliminar localización")
+    print("  list          -> Ver estado actual")
+    print("  exit          -> Salir\n")
 
     while RUNNING:
-        cmd = input("EV_W> ").strip().lower()
+        try:
+            cmd = input("EV_W> ").strip()
+        except EOFError:
+            break
+
         if not cmd:
             continue
 
         parts = cmd.split()
 
-        if parts[0] == "add" and len(parts) == 2:
-            ciudad = parts[1].capitalize()
+        if parts[0].lower() == "add" and len(parts) >= 2:
+            # Permite ciudades con espacios: add San Sebastian
+            ciudad = " ".join(parts[1:]).title()
             if ciudad not in LOCATIONS:
                 LOCATIONS[ciudad] = {"estado": "OK", "temperatura": None}
                 print(f"[EV_W] Localización añadida: {ciudad}")
             else:
-                print("[EV_W] La ciudad ya existe")
+                print(f"[EV_W] {ciudad} ya estaba en la lista")
 
-        elif parts[0] == "del" and len(parts) == 2:
-            ciudad = parts[1].capitalize()
+        elif parts[0].lower() == "del" and len(parts) >= 2:
+            ciudad = " ".join(parts[1:]).title()
             if ciudad in LOCATIONS:
                 del LOCATIONS[ciudad]
                 print(f"[EV_W] Localización eliminada: {ciudad}")
             else:
-                print("[EV_W] Ciudad no encontrada")
+                print(f"[EV_W] Ciudad no encontrada: {ciudad}")
 
-        elif parts[0] == "list":
-            for ciudad, info in LOCATIONS.items():
-                print(f"- {ciudad}: {info['estado']} ({info['temperatura']}°C)")
+        elif parts[0].lower() == "list":
+            if not LOCATIONS:
+                print("[EV_W] No hay localizaciones registradas")
+            else:
+                print(f"{'Ciudad':<20} {'Estado':<8} {'Temperatura'}")
+                print("-" * 40)
+                for c, info in LOCATIONS.items():
+                    temp = f"{info['temperatura']}°C" if info['temperatura'] is not None else "---"
+                    print(f"  {c:<18} {info['estado']:<8} {temp}")
 
-        elif parts[0] == "exit":
+        elif parts[0].lower() == "exit":
             RUNNING = False
+            print("[EV_W] Cerrando Weather Control Office...")
             break
 
         else:
-            print("[EV_W] Comando no válido")
+            print("[EV_W] Comando no válido. Usa: add <ciudad> | del <ciudad> | list | exit")
 
 # =========================================================
 # MAIN
 # =========================================================
 
 def main():
+    global OPENWEATHER_API_KEY, API_CENTRAL_URL
+
+    parser = argparse.ArgumentParser(description="EV_W - Weather Control Office")
+    parser.add_argument(
+        "--apikey",
+        type=str,
+        required=True,
+        help="API key de OpenWeather"
+    )
+    parser.add_argument(
+        "--central",
+        type=str,
+        default="http://127.0.0.1:8000",
+        help="URL base de EV_Central (ej. http://192.168.1.10:8000)"
+    )
+    args = parser.parse_args()
+
+    OPENWEATHER_API_KEY = args.apikey
+    API_CENTRAL_URL     = f"{args.central.rstrip('/')}/clima"
+
     threading.Thread(target=ciclo_clima, daemon=True).start()
     menu()
 
