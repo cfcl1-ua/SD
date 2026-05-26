@@ -100,13 +100,18 @@ def guardar_clima(ciudad, estado, temperatura):
     # 2️⃣ Crear la tabla "climas" si no existe
     if "climas" not in db:
         db["climas"] = []
+        
+    cambiado=False
 
     # 3️⃣ Buscar si ya existe la ciudad
     for c in db["climas"]:
         if c["ciudad"].lower() == ciudad.lower():
             # Actualizar
-            c["estado"] = estado
-            c["temperatura"] = temperatura
+            if c["estado"] != estado or c["temperatura"] != temperatura:
+                c["estado"] = estado
+                c["temperatura"] = temperatura
+                cambiado = True
+                
             break
     else:
         # Si no existe, agregar nuevo
@@ -117,10 +122,11 @@ def guardar_clima(ciudad, estado, temperatura):
         })
 
     # 4️⃣ Guardar DB
-    with open(DB_FILE, "w") as f:
-        json.dump(db, f, indent=4)
+    if cambiado:            
+        with open(DB_FILE, "w") as f:
+            json.dump(db, f, indent=4)
 
-    print(f"[EV_W] Clima guardado: {ciudad} -> {estado} ({temperatura}°C)")
+        print(f"[EV_W] Clima guardado: {ciudad} -> {estado} ({temperatura}°C)")
 # =========================================================
 # MENÚ DE CONTROL (EN CALIENTE)
 # =========================================================
