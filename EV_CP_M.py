@@ -21,8 +21,7 @@ def cargar_clave_aes(id_cp):
     ruta = f"claves/{id_cp}.key"
     try:
         with open(ruta, 'rb') as f:
-            clave = f.read()
-            return Fernet(clave)
+            return f.read()
     except Exception as e:
         print(f"[ERROR] No se pudo leer la clave AES para CP {id_cp}: {e}")
         return None
@@ -71,11 +70,29 @@ def generar_token(id_cp):
 
 
 def obtener_token(id_cp, ip_registry="localhost", puerto_registry=9100):
-    url = f"http://172.21.42.11:8000/token"
+    url = f"http://{ip_registry}:{puerto_registry}/token"
     try:
         response = requests.post(url, json={"id": id_cp}, timeout=5)
         if response.status_code == 200:
             return response.json()["token"]
+        elif response.status_code == 403:
+            # CP no registrado → registrar automáticamente
+            print("[REGISTRY] CP no registrado, intentando registro automático...")
+            reg = requests.put(
+                f"http://{ip_registry}:{puerto_registry}/register",
+                json={"id": id_cp, "location": "desconocida"},
+                timeout=5
+            )
+            if reg.status_code == 201:
+                data = reg.json()
+                print("[REGISTRY] CP registrado correctamente.")
+                # Guardar la clave AES que devuelve el registry
+                os.makedirs("claves", exist_ok=True)
+                with open(f"claves/{id_cp}.key", "wb") as f:
+                    f.write(data["aes_key"].encode())
+                return data["token"]  # ← devolver el token del registro
+            else:
+                print(f"[REGISTRY] Error al registrar: {reg.text}")
         else:
             print(f"[TOKEN] Error {response.status_code}: {response.text}")
     except Exception as e:
@@ -107,8 +124,7 @@ class Monitor:
         self.token = None
         self.fernet = None
         
-        
-    
+
         
     def autenticar_registry(self):
                 
@@ -120,12 +136,11 @@ class Monitor:
 
 
         print("[REGISTRY] Token recibido")
-        self.fernet = cargar_clave_aes(self.ID)
-        if not self.fernet:
+        clave = cargar_clave_aes(self.ID)
+        if not clave:
+            print("[REGISTRY] No se encontró clave AES, generando nueva...")
             clave = crear_y_guardar_clave_aes(self.ID)
-            self.fernet = Fernet(clave)
-        else:
-            self.fernet=Fernet(self.fernet)
+        self.fernet = Fernet(clave)
 
 
         hilo_token = threading.Thread(
@@ -147,7 +162,10 @@ class Monitor:
                 print(f"[ERROR] No se pudo guardar la clave AES: {e}")
                 return False
         return True
+        
     #conecta con central
+    
+
     def conectar_central(self):
         print("[DEBUG] Creando socket del Monitor...")
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -172,7 +190,7 @@ class Monitor:
             #El CP se registra a la base de datos o ya esta registrado
             if msg_length == "DESCONOCIDO":
                 msg=f"monitor|AUTENTIFICACION|{self.ID}|{self.LOC}|{self.token}|{self.fernet}"
-                send(msg, self.sock)
+                send(msg, self.sock, self.fernet)
                 status=self.sock.recv(2048).decode(FORMAT)
                 print(status)
                 return True

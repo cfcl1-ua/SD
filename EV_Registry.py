@@ -156,7 +156,7 @@ def consultar_cp(id: str):
 if __name__ == "__main__":
     os.makedirs(CLAVES_DIR, exist_ok=True)
     if not os.path.exists(DB_FILE):
-        guardar_db({})
+        guardar_db({"cps": []})
 
     uvicorn.run(
         app,
