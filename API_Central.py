@@ -5,20 +5,17 @@ import threading
 import os
 from pydantic import BaseModel
 
-class CPId(BaseModel):
-    id: str
-
 app = Flask(__name__)
-
-@app.route("/ping")
-def ping():
-    print(">>> PING RECIBIDO")
-    return "pong"
 
 CORS(app)
 
 DB_FILE = "db.json"
 lock = threading.Lock()
+
+@app.route("/ping")
+def ping():
+    print(">>> PING RECIBIDO")
+    return "pong"
 
 # ==============================
 # UTILIDADES
@@ -59,9 +56,9 @@ def Estado():
         estado=cp["estado"]
         temp = next((t["temperatura"] for t in temperaturas if t["ciudad"].lower() == cp["location"].lower()), None)
         cp["temperatura"] = temp if temp is not None else "-"
-        cp["estado"] = estado if temp > 0 else "ERROR"
+        cp["estado"] = estado if (temp is not None and temp > 0 and) else "ERROR"
     
-    return  {"cps": cps}
+    return  jsonify({"cps": cps})
 
 
 @app.route("/api/cps/<id_cp>", methods=["GET"])
@@ -94,20 +91,9 @@ def actualizar_estado_cp(id_cp):
 
     return jsonify({"ok": "Estado actualizado"})
 
-def generar_token(cp_id):
-    return str(uuid.uuid4())
-
-@app.post("/token")
-def emitir_token(cp: CPId):
-    db = cargar_db()
-    if cp.id not in db:
-        raise HTTPException(status_code=403, detail="CP no registrado")
-
-    token = generar_token(cp.id)
-    db[cp.id]["token"] = token
-    guardar_db(db)
-
-    return {"token": token}
+# ==============================
+# FRONTEND
+# ==============================
 
 @app.route("/")
 def index():

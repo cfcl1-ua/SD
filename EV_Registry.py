@@ -48,7 +48,18 @@ def cargar_db():
     if not os.path.exists(DB_FILE):
         return {}
     with open(DB_FILE, "r") as f:
-        return json.load(f)
+        data = json.load(f)
+    if "cps" in data and isinstance(data["cps"], list):
+        nuevo = {}
+        for cp in data["cps"]:
+            nuevo[cp["id"]] = cp
+        # Conservar otras claves como "clientes" y "climas"
+        for k, v in data.items():
+            if k != "cps":
+                nuevo[k] = v
+        guardar_db(nuevo)
+        return nuevo
+    return data
 
 
 def guardar_db(db):
@@ -92,7 +103,7 @@ def generar_token(id_cp: str) -> str:
 @app.put("/register", status_code=201)
 def registrar_cp(cp: CPRegistro):
     db = cargar_db()
-    if cp.id in db:
+    if cp.id in db and isinstance(db[cp.id], dict) and "registrado" in db[cp.id]:
         raise HTTPException(status_code=409, detail="CP ya registrado")
     
     clave_aes = crear_y_guardar_clave_aes(cp.id)

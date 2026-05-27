@@ -90,7 +90,7 @@ def obtener_token(id_cp, ip_registry="localhost", puerto_registry=9100):
                 os.makedirs("claves", exist_ok=True)
                 with open(f"claves/{id_cp}.key", "wb") as f:
                     f.write(data["aes_key"].encode())
-                return data["token"]  # ← devolver el token del registro
+                return data["token"]  
             else:
                 print(f"[REGISTRY] Error al registrar: {reg.text}")
         else:
@@ -240,6 +240,7 @@ class Monitor:
                 else:
                     msg_stat=f"monitor|ESTADO|{self.ID}|IDLE"
                     send(msg_stat, self.sock, self.fernet)
+                    
         #Si el monitor no logra conectarse al engine se interpretara que el engine esta desconectado
         except socket.timeout:
             print("No se pudo conectar al Engine.")
