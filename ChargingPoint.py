@@ -119,4 +119,27 @@ if __name__ == "__main__":
     
     
     except KeyboardInterrupt:
-        print("\nInterrupción por usuario (Ctrl+C). Cerrando...")
+        print("\n[INFO] Cerrando ChargingPoint...")
+        # Cerrar socket con central
+        try:
+            if Punto.Monitor.sock:
+                Punto.Monitor.sock.close()
+                print("[INFO] Socket con central cerrado.")
+        except:
+            pass
+        # Cerrar socket con engine
+        try:
+            if Punto.Monitor.sock:
+                Punto.Monitor.addr_engine
+                print("[INFO] Conexión con engine cerrada.")
+        except:
+            pass
+
+        print("[INFO] ChargingPoint apagado correctamente.")
+        for hilo in [hilo_supervision, hilo_trabajo, hilo_peticiones]:
+            try:
+                hilo.join(timeout=3)
+            except:
+                pass
+            
+    sys.exit(0)

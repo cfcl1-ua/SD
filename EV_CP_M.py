@@ -32,7 +32,7 @@ def monitor_token_renovable(id_cp, ip_registry="localhost", puerto_registry=9100
         token = obtener_token(id_cp, ip_registry, puerto_registry)
         if token:
             token_actual = token
-            print("[TOKEN] Token renovado correctamente.")
+            #print("[TOKEN] Token renovado correctamente.")
             try:
                 if socket_activo:
                     socket_activo.sendall(f"TOKEN#{token_actual}".encode())

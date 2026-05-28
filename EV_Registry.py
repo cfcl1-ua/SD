@@ -109,14 +109,14 @@ def registrar_cp(cp: CPRegistro):
     clave_aes = crear_y_guardar_clave_aes(cp.id)
     token = generar_token(cp.id)
 
-    db["cps"].append({
+    db[cp.id]={
         "id": cp.id,
         "location": cp.location,
         "registrado": True,
         "estado":"OFFLINE",
         "token": token,
         "aes_key": clave_aes
-    })
+    }
     guardar_db(db)
 
 
