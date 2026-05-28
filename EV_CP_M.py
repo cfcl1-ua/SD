@@ -12,7 +12,7 @@ FORMAT = 'utf-8'
 FIN = "FIN"
 
 
-SECRET_TOKEN = "1"
+SECRET_TOKEN = "evregistry2425"
 
 socket_activo = None
 token_actual = None
@@ -170,9 +170,12 @@ class Monitor:
         print("[DEBUG] Creando socket del Monitor...")
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.connect(self.addr)
-        
+        print(f"[DEBUG] Token a enviar: {self.token}")
+
         msg=f"monitor|PETICION|{self.ID}|IDLE"
-        send(msg, self.sock, self.fernet)
+        msg_length = str(len(msg.encode(FORMAT)))
+        self.sock.send(msg_length.encode(FORMAT).ljust(HEADER))
+        self.sock.send(msg.encode(FORMAT))
         
         response=self.sock.recv(2048).decode(FORMAT)
         #mensaje de confirmacion de central
@@ -180,6 +183,10 @@ class Monitor:
         
         if "DEMASIADAS CONEXIONES" in response.upper():
             print("El servidor central está lleno. Espera un momento e inténtalo de nuevo.")
+            self.sock.close()
+            return False
+        if "ERROR" in response or "DEMASIADAS" in response.upper():
+            print(f"[ERROR] Central rechazó la conexión: {response}")
             self.sock.close()
             return False
         if int(response) == 1:
@@ -214,7 +221,11 @@ class Monitor:
             while True:
                 
                 msg_stat=f"ENGINE|{self.ID}|ok"
-                send(msg_stat, client_engine, self.fernet)
+                msg_bytes = msg_stat.encode(FORMAT)
+                msg_length = str(len(msg_bytes)).encode(FORMAT)
+                msg_length += b' ' * (HEADER - len(msg_length))
+                client_engine.send(msg_length)
+                client_engine.send(msg_bytes)
                 status=client_engine.recv(2048).decode(FORMAT)
                 time.sleep(1)
                   
