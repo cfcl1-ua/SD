@@ -189,7 +189,7 @@ class Monitor:
             msg_length=self.sock.recv(HEADER).decode(FORMAT)
             #El CP se registra a la base de datos o ya esta registrado
             if msg_length == "DESCONOCIDO":
-                msg=f"monitor|AUTENTIFICACION|{self.ID}|{self.LOC}|{self.token}|{self.fernet}"
+                msg=f"monitor|AUTENTIFICACION|{self.ID}|{self.LOC}|{self.token}"
                 send(msg, self.sock, self.fernet)
                 status=self.sock.recv(2048).decode(FORMAT)
                 print(status)
