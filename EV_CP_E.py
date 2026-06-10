@@ -8,7 +8,19 @@ HEADER = 64
 FORMAT = 'utf-8'
 FIN = "FIN"
 MAX_CONEXIONES = 3
-TOPIC_CENTRAL = "engine-to-central"      
+TOPIC_CENTRAL = "engine-to-central"
+
+KAFKA_SECRET_KEY = b'MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE='
+fernet_kafka = Fernet(KAFKA_SECRET_KEY)
+
+# Función segura para descifrar en el consumer
+def decrypt_kafka_msg(v):
+    try:
+        if v:
+            return fernet_kafka.decrypt(v).decode(FORMAT)
+    except Exception as e:
+        print(f"[ERROR KAFKA DESCIFRADO] {e}")
+    return None
 
 #Al conectarse correctamente empieza a enviar periodicamente el estado al monitor
 def handle_client(conn, addr, engine):
@@ -53,9 +65,10 @@ class Engine:
         self.id=None
         self.driver=None
         self.consumer=None
+        
         self.producer = KafkaProducer(
         bootstrap_servers=[self.ADDR_SERVER],
-        value_serializer=lambda v: v.encode(FORMAT)
+        value_serializer=lambda v: fernet_kafka_encrypt(v.encode(FORMAT))
         )
         
         
@@ -67,7 +80,7 @@ class Engine:
         auto_offset_reset='earliest',
         enable_auto_commit=True,
         group_id='cliente_A',
-        value_deserializer=lambda v: v.decode(FORMAT)   
+        value_deserializer=decrypt_kafka_msg   
         )
         
     def estado(self):
@@ -210,7 +223,10 @@ class Engine:
             while self.consumer is None:
                 time.sleep(0.1)
             for message in self.consumer:
-                text = message.value or ""
+                text = message.value
+                if not text:
+                    continue
+                
                 parts = text.split("|")
                 if len(parts) > 3:
                     peticion = parts[1]

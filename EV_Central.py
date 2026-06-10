@@ -419,11 +419,22 @@ def handle_client(conn, addr):
 # KAFKA
 # =========================================================
 
+KAFKA_SECRET_KEY = b'MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE='
+fernet_kafka = Fernet(KAFKA_SECRET_KEY)
+
+def decrypt_kafka_msg(v):
+    try:
+        if v:
+            return fernet_kafka.decrypt(v).decode(FORMAT)
+    except Exception as e:
+        audit("ERROR_DESCIFRADO_KAFKA", f"No se pudo descifrar mensaje: {e}")
+    return None
+
 def create_consumer(bootstrap):
     return KafkaConsumer(
         TOPIC_DTC, TOPIC_ETC,
         bootstrap_servers=[bootstrap],
-        value_deserializer=lambda v: v,
+        value_deserializer=decrypt_kafka_msg,
         auto_offset_reset="earliest",
         group_id="central-group"
     )
@@ -431,7 +442,9 @@ def create_consumer(bootstrap):
 def receive_messages(consumer):
     for msg in consumer:
         try:
-            raw = msg.value.decode(FORMAT)
+            raw = msg.value
+            if raw is None:
+                continue
             audit("MENSAJE_KAFKA", raw)
         except Exception as e:
             audit("ERROR_KAFKA", f"Mensaje ilegible: {e}")
