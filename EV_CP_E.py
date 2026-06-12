@@ -3,6 +3,7 @@ import threading
 import time
 import argparse
 from kafka import KafkaProducer, KafkaConsumer
+from cryptography.fernet import Fernet
 
 HEADER = 64
 FORMAT = 'utf-8'
@@ -21,6 +22,9 @@ def decrypt_kafka_msg(v):
     except Exception as e:
         print(f"[ERROR KAFKA DESCIFRADO] {e}")
     return None
+
+def fernet_kafka_encrypt(data: bytes) -> bytes:
+    return fernet_kafka.encrypt(data)
 
 #Al conectarse correctamente empieza a enviar periodicamente el estado al monitor
 def handle_client(conn, addr, engine):

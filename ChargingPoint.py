@@ -89,12 +89,14 @@ if __name__ == "__main__":
         
         Punto=ChargingPoint(args.id, args.localizacion, ip, int(puerto), ip_engine, int(port_engine), ip_broker, int(port_broker))
         
-        Punto.Monitor.autenticar_registry()
+        if not Punto.Monitor.autenticar_registry():
+            print("[ERROR] Autenticacion fallida. Abortando.")
+            sys.exit(1)
         #Lo conectamos con central
         activo=Punto.Monitor.conectar_central()
         
         if activo:
-            
+            print("m")
             #hilo donde monitor checara el estado del punto de arga
             hilo_trabajo = threading.Thread(target=Punto.Engine.estado)
             hilo_supervision = threading.Thread(target=Punto.Monitor.estado)
