@@ -1,110 +1,93 @@
 {
-
-  "cps": [
-    {
-      "id": "9",
-      "location": "murcia",
-      "registrado": true,
-      "estado": "OFFLINE",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjkiLCJleHAiOjE3Njc4ODk0NTguMjY3MDg4NH0.SCy5UGjpOsB3ybzWj63dDRnsxkHOLWpG26XDGXuT1G4",
-      "aes_key": "N4kAaiXsGcREdbY4lYvo97Nik9UH9w38l_Wf7PsigPM="
-    },
-    {
-      "id": "14",
-      "location": "alicante",
-      "registrado": true,
-      "estado": "OFFLINE",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjkiLCJleHAiOjE3Njc4ODk0NTguMjY3MDg4NH0.SCy5UGjpOsB3ybzWj63dDRnsxkHOLWpG26XDGXuT1G4",
-      "aes_key": "N4kAaiXsGcREdbY4lYvo97Nik9UH9w38l_Wf7PsigPM="
-    },
-    {
-      "id": "21",
-      "location": "desconocida",
-      "registrado": true,
-      "estado": "OFFLINE",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjIxIiwiZXhwIjoxNzgxMjYyMjgzLjgxODA4ODV9.IvJ7N9Tks0n8TF28hUBLSfaot_74R7EOcK1Mhx4nb90",
-      "aes_key": "1YdZcYo3bIAhnPqyKtgxOBK--dRzxoCvfyzmDQZiacg="
-    },
-    {
-      "id": "22",
-      "location": "new york",
-      "registrado": false,
-      "estado": "OFFLINE",
-      "token": "",
-      "aes_key": ""
-    },
-    {
-      "id": "23",
-      "location": "los angeles",
-      "registrado": false,
-      "estado": "OFFLINE",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjIzIiwiZXhwIjoxNzgxMjU2OTY1LjM3MTg1NDN9.Cj7sapYhRm6xJCH8Sr_yK7E7b3PDN5_ilwMrvTpia9A",
-      "aes_key": ""
-    },
-    {
-      "id": "24",
-      "location": "chicago",
-      "registrado": false,
-      "estado": "OFFLINE",
-      "token": "",
-      "aes_key": ""
-    },
-    {
-      "id": "25",
-      "location": "miami",
-      "registrado": false,
-      "estado": "OFFLINE",
-      "token": "",
-      "aes_key": ""
-    },
-    {
-      "id": "32",
-      "location": "sevilla",
-      "registrado": true,
-      "estado": "OFFLINE",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjMyIiwiZXhwIjoxNzc5OTkxNTgzLjE4MzQ3Mn0.1BmsxWLVs1YYMe_9ZahWq40uM6wPsZ6jwVYsAt-cSeo",
-      "aes_key": "T5_vpIosmA_6wPri9GlgAL_8aIIE-ajdK_QvKtAXxuU="
-    }
-  ],
-  "clientes": [
-    "21",
-    "32"
-  ],
-  "climas": [
-    {
-      "ciudad": "Alicante",
-      "estado": "OK",
-      "temperatura": 19.01
-    },
-    {
-      "ciudad": "Murcia",
-      "estado": "OK",
-      "temperatura": 17.12
-    },
-    {
-      "ciudad": "Barrow",
-      "estado": "KO",
-      "temperatura": -6.99
-    },
-    {
-      "ciudad": "New York",
-      "estado": "OK",
-      "temperatura": 12.5
-    },
-    {
-      "ciudad": "Los Angeles",
-      "estado": "OK",
-      "temperatura": 22.3
-    },
-    {
-      "ciudad": "Chicago",
-      "estado": "OK",
-      "temperatura": 8.1
-    },
-    {
-      "ciudad": "Miami",
-      "estado": "OK",
-      "temperatura": 28.4
-    }
-  ]
+    "cps": [
+        {
+            "id": "9",
+            "location": "murcia",
+            "registrado": true,
+            "estado": "OFFLINE",
+            "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjkiLCJleHAiOjE3Njc4ODk0NTguMjY3MDg4NH0.SCy5UGjpOsB3ybzWj63dDRnsxkHOLWpG26XDGXuT1G4",
+            "aes_key": "N4kAaiXsGcREdbY4lYvo97Nik9UH9w38l_Wf7PsigPM="
+        },
+        {
+            "id": "14",
+            "location": "alicante",
+            "registrado": true,
+            "estado": "OFFLINE",
+            "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjkiLCJleHAiOjE3Njc4ODk0NTguMjY3MDg4NH0.SCy5UGjpOsB3ybzWj63dDRnsxkHOLWpG26XDGXuT1G4",
+            "aes_key": "N4kAaiXsGcREdbY4lYvo97Nik9UH9w38l_Wf7PsigPM="
+        },
+        {
+            "id": "22",
+            "location": "new york",
+            "registrado": false,
+            "estado": "OFFLINE",
+            "token": "",
+            "aes_key": ""
+        },
+        {
+            "id": "23",
+            "location": "los angeles",
+            "registrado": false,
+            "estado": "OFFLINE",
+            "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjIzIiwiZXhwIjoxNzgxMjU2OTY1LjM3MTg1NDN9.Cj7sapYhRm6xJCH8Sr_yK7E7b3PDN5_ilwMrvTpia9A",
+            "aes_key": ""
+        },
+        {
+            "id": "24",
+            "location": "chicago",
+            "registrado": false,
+            "estado": "OFFLINE",
+            "token": "",
+            "aes_key": ""
+        },
+        {
+            "id": "25",
+            "location": "miami",
+            "registrado": false,
+            "estado": "OFFLINE",
+            "token": "",
+            "aes_key": ""
+        }
+    ],
+    "clientes": [
+        "21",
+        "32"
+    ],
+    "climas": [
+        {
+            "ciudad": "Alicante",
+            "estado": "OK",
+            "temperatura": 19.01
+        },
+        {
+            "ciudad": "Murcia",
+            "estado": "OK",
+            "temperatura": 17.12
+        },
+        {
+            "ciudad": "Barrow",
+            "estado": "KO",
+            "temperatura": -6.99
+        },
+        {
+            "ciudad": "New York",
+            "estado": "OK",
+            "temperatura": 12.5
+        },
+        {
+            "ciudad": "Los Angeles",
+            "estado": "OK",
+            "temperatura": 22.3
+        },
+        {
+            "ciudad": "Chicago",
+            "estado": "OK",
+            "temperatura": 8.1
+        },
+        {
+            "ciudad": "Miami",
+            "estado": "OK",
+            "temperatura": 28.4
+        }
+    ]
 }
