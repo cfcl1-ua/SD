@@ -62,12 +62,11 @@ def consultar_tiempo(ciudad):
 
 def notificar_central(ciudad, estado, temperatura):
     payload = {
-        "localizacion": ciudad,
-        "estado": estado,
+        "ciudad": ciudad,
         "temperatura": temperatura
     }
     try:
-        response = requests.post(API_CENTRAL_URL, json=payload, timeout=3)
+        response = requests.put(API_CENTRAL_URL, json=payload, timeout=3)
         if response.status_code == 200:
             print(f"[EV_W] Notificado a Central: {ciudad} -> {estado} ({temperatura}°C)")
         else:
