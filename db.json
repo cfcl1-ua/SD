@@ -47,6 +47,14 @@
             "estado": "OFFLINE",
             "token": "",
             "aes_key": ""
+        },
+        {
+            "id": "43",
+            "location": "london",
+            "registrado": true,
+            "estado": "IDLE",
+            "token": "",
+            "aes_key": ""
         }
     ],
     "clientes": [

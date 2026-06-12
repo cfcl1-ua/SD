@@ -45,6 +45,25 @@ AUDIT_LOG = []
 
 CONEX_ACTIVAS = 0
 
+EVW_URL = ""  # URL de EV_W, se rellena en main() con --evw
+
+# =========================================================
+# NOTIFICACIÓN A EV_W
+# =========================================================
+
+def notificar_evw_ciudad(ciudad):
+    """Informa a EV_W de una nueva ciudad para que empiece a monitorizarla."""
+    if not EVW_URL:
+        return
+    try:
+        r = requests.post(f"{EVW_URL.rstrip('/')}/ciudad", json={"ciudad": ciudad}, timeout=3)
+        if r.status_code == 200:
+            print(f"[CENTRAL] EV_W notificado: nueva ciudad '{ciudad}'")
+        else:
+            print(f"[CENTRAL][WARN] EV_W respondió {r.status_code} para ciudad '{ciudad}'")
+    except Exception as e:
+        print(f"[CENTRAL][WARN] No se pudo notificar a EV_W: {e}")
+
 # =========================================================
 # FLASK API — puerto 8000
 # =========================================================
@@ -237,6 +256,7 @@ def updateStatusCP(id_cp, estado):
 def validar_jwt(token: str, id_cp: str) -> bool:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        print(f"[DEBUG] JWT payload: {payload}")
         return payload.get("id") == id_cp
     except jwt.ExpiredSignatureError:
         audit("JWT_EXPIRADO", f"Token expirado para CP {id_cp}")
@@ -378,10 +398,13 @@ def handle_client(conn, addr):
                 CP_SOCKETS[id_cp] = conn
                 fernet_cp = Fernet(clave_aes.encode() if isinstance(clave_aes, str) else clave_aes)
 
-                insertToCPsBD(id_cp, loc, "AVAILABLE")
+                es_nuevo = insertToCPsBD(id_cp, loc, "AVAILABLE")
                 if id_cp not in CPS_IDX:
                     CPS_IDX.append(id_cp)
                     CPS.append({"id": id_cp, "location": loc, "estado": "AVAILABLE"})
+
+                if es_nuevo:
+                    threading.Thread(target=notificar_evw_ciudad, args=(loc,), daemon=True).start()
 
                 audit("AUTENTICACION_OK", f"CP {id_cp} autenticado. Clave AES entregada.", ip_origen)
                 print(f"[DEBUG] Autenticacion OK para CP {id_cp}")
@@ -467,7 +490,7 @@ def start(server):
 # =========================================================
 
 def main():
-    global SERVER, ADDR, CPS, CPS_IDX, REGISTRY_HOST
+    global SERVER, ADDR, CPS, CPS_IDX, REGISTRY_HOST, EVW_URL
 
     SERVER = input("Introduce la IP del servidor central: ").strip()
     ADDR = (SERVER, PORT)
@@ -475,6 +498,10 @@ def main():
     registry_ip = input(f"Introduce la IP del EV_Registry [{REGISTRY_HOST}]: ").strip()
     if registry_ip:
         REGISTRY_HOST = registry_ip
+
+    evw_url = input("Introduce la URL de EV_W (ej. http://172.21.42.5:6060) [dejar vacío si no hay]: ").strip()
+    if evw_url:
+        EVW_URL = evw_url
 
     CPS, CPS_IDX = cargarCPs()
     print(f"[CENTRAL] {len(CPS)} CPs cargados desde BD")

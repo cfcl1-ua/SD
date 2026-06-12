@@ -4,6 +4,8 @@ import time
 import os
 import json
 import argparse
+from flask import Flask, jsonify, request as flask_request
+from flask_cors import CORS
 # d1f046b4561bf94314e5a30c6c6bac3c
 # =========================================================
 # CONFIGURACIÓN (parametrizable, sin hardcodear)
@@ -16,6 +18,7 @@ DB_FILE = "db.json"
 # Se rellenan en main() con los argumentos de línea de comandos
 OPENWEATHER_API_KEY = ""
 API_CENTRAL_URL = ""
+EVW_PORT = 6060
 
 # =========================================================
 # ESTADO GLOBAL
@@ -79,6 +82,7 @@ def notificar_central(ciudad, estado, temperatura):
 # =========================================================
 
 def ciclo_clima():
+    primer_ciclo = True
     while RUNNING:
         for ciudad in list(LOCATIONS.keys()):
             estado_nuevo, temp = consultar_tiempo(ciudad)
@@ -97,11 +101,13 @@ def ciclo_clima():
             if estado_nuevo != estado_anterior or temp != temp_anterior:
                 guardar_clima(ciudad, estado_nuevo, temp)
 
-            # Notificar a Central solo si el estado OK/KO cambia
-            if estado_nuevo != estado_anterior:
-                print(f"[EV_W] Cambio de estado en {ciudad}: {estado_anterior} -> {estado_nuevo} ({temp}°C)")
+            # Notificar a Central: siempre en el primer ciclo, o si cambia el estado
+            if primer_ciclo or estado_nuevo != estado_anterior:
+                if not primer_ciclo:
+                    print(f"[EV_W] Cambio de estado en {ciudad}: {estado_anterior} -> {estado_nuevo} ({temp}°C)")
                 notificar_central(ciudad, estado_nuevo, temp)
 
+        primer_ciclo = False
         time.sleep(CHECK_INTERVAL)
 
 # =========================================================
@@ -136,6 +142,55 @@ def guardar_clima(ciudad, estado, temperatura):
 
     except Exception as e:
         print(f"[EV_W][ERROR] No se pudo guardar en BD: {e}")
+
+# =========================================================
+# CARGA INICIAL DE CIUDADES DESDE LA BD
+# =========================================================
+
+def cargar_ciudades_desde_db():
+    """Lee db.json y añade a LOCATIONS todas las ciudades de los CPs registrados."""
+    try:
+        if not os.path.exists(DB_FILE):
+            return
+        with open(DB_FILE, "r", encoding="utf-8") as f:
+            db = json.load(f)
+        for cp in db.get("cps", []):
+            loc = cp.get("location", "").strip()
+            if loc and loc.lower() != "desconocida":
+                ciudad = loc.title()
+                if ciudad not in LOCATIONS:
+                    LOCATIONS[ciudad] = {"estado": "OK", "temperatura": None}
+                    print(f"[EV_W] Ciudad cargada desde BD: {ciudad}")
+    except Exception as e:
+        print(f"[EV_W][ERROR] No se pudieron cargar ciudades desde BD: {e}")
+
+# =========================================================
+# SERVIDOR FLASK — recibe notificaciones de EV_Central
+# =========================================================
+
+app_evw = Flask(__name__)
+CORS(app_evw)
+
+@app_evw.route("/ciudad", methods=["POST"])
+def recibir_ciudad():
+    data = flask_request.json
+    ciudad_raw = data.get("ciudad", "").strip() if data else ""
+    if not ciudad_raw:
+        return jsonify({"error": "ciudad no especificada"}), 400
+
+    ciudad = ciudad_raw.title()
+    if ciudad.lower() == "desconocida":
+        return jsonify({"error": "ciudad no válida"}), 400
+
+    if ciudad not in LOCATIONS:
+        LOCATIONS[ciudad] = {"estado": "OK", "temperatura": None}
+        print(f"[EV_W] Nueva ciudad recibida de Central: {ciudad}")
+        return jsonify({"resultado": "OK", "ciudad": ciudad}), 200
+    else:
+        return jsonify({"resultado": "YA_EXISTE", "ciudad": ciudad}), 200
+
+def run_flask_evw():
+    app_evw.run(host="0.0.0.0", port=EVW_PORT, debug=False, use_reloader=False)
 
 # =========================================================
 # MENÚ DE CONTROL (EN CALIENTE)
@@ -202,7 +257,7 @@ def menu():
 # =========================================================
 
 def main():
-    global OPENWEATHER_API_KEY, API_CENTRAL_URL
+    global OPENWEATHER_API_KEY, API_CENTRAL_URL, EVW_PORT
 
     parser = argparse.ArgumentParser(description="EV_W - Weather Control Office")
     parser.add_argument(
@@ -217,11 +272,20 @@ def main():
         default="http://127.0.0.1:8000",
         help="URL base de EV_Central (ej. http://192.168.1.10:8000)"
     )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=6060,
+        help="Puerto en el que escucha EV_W (default: 6060)"
+    )
     args = parser.parse_args()
 
     OPENWEATHER_API_KEY = args.apikey
     API_CENTRAL_URL     = f"{args.central.rstrip('/')}/clima"
+    EVW_PORT            = args.port
 
+    cargar_ciudades_desde_db()
+    threading.Thread(target=run_flask_evw, daemon=True).start()
     threading.Thread(target=ciclo_clima, daemon=True).start()
     menu()
 
