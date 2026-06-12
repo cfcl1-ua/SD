@@ -177,38 +177,30 @@ class Monitor:
         self.sock.send(msg_length.encode(FORMAT).ljust(HEADER))
         self.sock.send(msg.encode(FORMAT))
         
-        response=self.sock.recv(2048).decode(FORMAT)
+        response=self.sock.recv(2048).decode(FORMAT).strip()
         #mensaje de confirmacion de central
         print(f"[DEBUG] Respuesta recibida: '{response}'")
         
-        if "DEMASIADAS CONEXIONES" in response.upper():
+        if "DEMASIADAS" in response.upper():
             print("El servidor central está lleno. Espera un momento e inténtalo de nuevo.")
             self.sock.close()
             return False
-        if "ERROR" in response or "DEMASIADAS" in response.upper():
+        if "ERROR" in response :
             print(f"[ERROR] Central rechazó la conexión: {response}")
             self.sock.close()
             return False
-        if int(response) == 1:
-            print("conectado con central")
-            
-            #respuesta 
-            msg_length=self.sock.recv(HEADER).decode(FORMAT).strip()
-            #El CP se registra a la base de datos o ya esta registrado
-            if msg_length == "DESCONOCIDO":
-                print("d")
-                msg=f"monitor|AUTENTIFICACION|{self.ID}|{self.LOC}|{self.token}"
-                send(msg, self.sock, self.fernet)
-                status=self.sock.recv(2048).decode(FORMAT)
-                print(status)
-                return True
-            elif msg_length=="REGISTRADO":
-                return True
-            else:
-                return False
+        if response == "DESCONOCIDO":
+            msg = f"monitor|AUTENTIFICACION|{self.ID}|{self.LOC}|{self.token}"
+            send(msg, self.sock, self.fernet)
+            status = self.sock.recv(2048).decode(FORMAT)
+            print(f"[CENTRAL] {status}")
+            return True
+        elif response == "REGISTRADO":
+            print("CP ya registrado en Central.")
+            return True
             
         else:
-            print("Error al conectar con central")
+            print(f"[ERROR] Respuesta inesperada de Central: {response}")
             self.sock.close()
             return False
         

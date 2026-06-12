@@ -17,11 +17,11 @@
     },
     "21": {
         "id": "21",
-        "location": "barrow",
-        "registrado": false,
+        "location": "desconocida",
+        "registrado": true,
         "estado": "OFFLINE",
-        "token": "",
-        "aes_key": ""
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjIxIiwiZXhwIjoxNzgxMjYyNDA3Ljk5MTEyMjJ9.uFzRt9iWr-RtpPvM7KYbil20VV15zQWMv8pvlh02eSE",
+        "aes_key": "1YdZcYo3bIAhnPqyKtgxOBK--dRzxoCvfyzmDQZiacg="
     },
     "22": {
         "id": "22",
@@ -36,7 +36,7 @@
         "location": "los angeles",
         "registrado": false,
         "estado": "OFFLINE",
-        "token": "",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjIzIiwiZXhwIjoxNzgxMjU2OTY1LjM3MTg1NDN9.Cj7sapYhRm6xJCH8Sr_yK7E7b3PDN5_ilwMrvTpia9A",
         "aes_key": ""
     },
     "24": {

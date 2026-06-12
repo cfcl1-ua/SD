@@ -149,8 +149,9 @@ def emitir_token(cp: CPId):
     token = generar_token(cp.id)
     db[cp.id]["token"] = token
     guardar_db(db)
-
-    return {"token": token}
+    
+    clave_aes = db[cp.id].get("aes_key", "")
+    return {"token": token, "aes_key": clave_aes}
 
 
 @app.get("/cp/{id}")
