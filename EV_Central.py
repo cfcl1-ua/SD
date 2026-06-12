@@ -308,7 +308,7 @@ def handle_client(conn, addr):
 
         # Indicar si el CP ya está registrado en nuestra BD
         if id_cp_sesion in CPS_IDX:
-            conn.send("REGISTRADO".encode(FORMAT))
+            conn.send("REGISTRADO".encode(FORMAT).ljust(HEADER))
             # CP ya conocido: obtener su clave del Registry para descifrar mensajes siguientes
             clave_aes = obtener_clave_registry(id_cp_sesion)
             if clave_aes:
@@ -317,7 +317,7 @@ def handle_client(conn, addr):
                 fernet_cp = Fernet(clave_aes.encode() if isinstance(clave_aes, str) else clave_aes)
             audit("RECONEXION", f"CP {id_cp_sesion} reconectado", ip_origen)
         else:
-            conn.send("DESCONOCIDO".encode(FORMAT))
+            conn.send("DESCONOCIDO".encode(FORMAT).ljust(HEADER))
             # Obtener clave del Registry ya ahora para poder descifrar el siguiente mensaje
             clave_aes = obtener_clave_registry(id_cp_sesion)
             if clave_aes:
