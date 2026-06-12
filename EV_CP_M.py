@@ -26,10 +26,10 @@ def cargar_clave_aes(id_cp):
         print(f"[ERROR] No se pudo leer la clave AES para CP {id_cp}: {e}")
         return None
 
-def monitor_token_renovable(id_cp, ip_registry="localhost", puerto_registry=9100):
+def monitor_token_renovable(id_cp, ip_registry="localhost", puerto_registry=9100, localizacion="desconocida"):
     global token_actual, socket_activo
     while True:
-        token = obtener_token(id_cp, ip_registry, puerto_registry)
+        token = obtener_token(id_cp, ip_registry, puerto_registry, localizacion)
         if token:
             token_actual = token
             #print("[TOKEN] Token renovado correctamente.")
@@ -69,7 +69,7 @@ def generar_token(id_cp):
 
 
 
-def obtener_token(id_cp, ip_registry="localhost", puerto_registry=9100):
+def obtener_token(id_cp, ip_registry="localhost", puerto_registry=9100 ,localizacion="desconocida"):
     url = f"http://{ip_registry}:{puerto_registry}/token"
     try:
         response = requests.post(url, json={"id": id_cp}, timeout=5)
@@ -80,7 +80,7 @@ def obtener_token(id_cp, ip_registry="localhost", puerto_registry=9100):
             print("[REGISTRY] CP no registrado, intentando registro automático...")
             reg = requests.put(
                 f"http://{ip_registry}:{puerto_registry}/register",
-                json={"id": id_cp, "location": "desconocida"},
+                json={"id": id_cp, "location": localizacion},
                 timeout=5
             )
             if reg.status_code == 201:
@@ -129,7 +129,7 @@ class Monitor:
     def autenticar_registry(self):
                 
         print("[REGISTRY] Solicitando token de autenticación...")
-        self.token = obtener_token(self.ID)
+        self.token = obtener_token(self.ID, localizacion=self.LOC)
         if not self.token:
             print("[REGISTRY] No se pudo obtener token")
             return False
@@ -145,7 +145,7 @@ class Monitor:
 
         hilo_token = threading.Thread(
         target=monitor_token_renovable,
-        args=(self.ID,),
+        args=(self.ID,"localhost", 9100, self.LOC),
         daemon=True
         )
         hilo_token.start()

@@ -85,6 +85,7 @@ def audit(action, description, origin=None):
     AUDIT_LOG.append(evento)
     print("[AUDITORIA]", evento)
 
+
 # ==============================
 # CLIMA
 # ==============================
@@ -136,6 +137,11 @@ def recibir_clima():
     saveDB(db)
     return jsonify({"resultado": "OK", "cps_afectados": cps_afectados})
 
+@app.route("/climas", methods=["GET"])
+def obtener_climas():
+    db = loadDB()
+    return jsonify(db.get("climas", []))
+
 # ==============================
 # CPs
 # ==============================
@@ -155,6 +161,14 @@ def estado_general():
         "num_cps": len(CPS),
         "alertas_clima": CLIMATE_ALERTS
     })
+
+# =========================================================
+# CLIENTES
+# =========================================================
+@app.route("/api/clientes", methods=["GET"])
+def obtener_clientes():
+    db = loadDB()
+    return jsonify(db.get("clientes", []))
 
 # ==============================
 # AUDITORÍA

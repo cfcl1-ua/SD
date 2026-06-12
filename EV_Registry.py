@@ -46,19 +46,11 @@ class CPId(BaseModel):
 
 def cargar_db():
     if not os.path.exists(DB_FILE):
-        return {}
+        return {"cps": [], "clientes": [], "climas": []}
     with open(DB_FILE, "r") as f:
         data = json.load(f)
-    if "cps" in data and isinstance(data["cps"], list):
-        nuevo = {}
-        for cp in data["cps"]:
-            nuevo[cp["id"]] = cp
-        # Conservar otras claves como "clientes" y "climas"
-        for k, v in data.items():
-            if k != "cps":
-                nuevo[k] = v
-        guardar_db(nuevo)
-        return nuevo
+    if "cps" not in data or not isinstance(data["cps"], list):
+        data["cps"] = []
     return data
 
 
@@ -66,6 +58,9 @@ def guardar_db(db):
     with open(DB_FILE, "w") as f:
         json.dump(db, f, indent=4)
 
+def buscar_cp(db, id_cp: str):
+    """Devuelve el dict del CP con ese id, o None si no existe."""
+    return next((cp for cp in db["cps"] if cp["id"] == id_cp), None)
 
 # =========================
 # UTILIDADES SEGURIDAD
@@ -103,20 +98,20 @@ def generar_token(id_cp: str) -> str:
 @app.put("/register", status_code=201)
 def registrar_cp(cp: CPRegistro):
     db = cargar_db()
-    if cp.id in db and isinstance(db[cp.id], dict) and "registrado" in db[cp.id]:
+    if buscar_cp(db, cp.id):
         raise HTTPException(status_code=409, detail="CP ya registrado")
     
     clave_aes = crear_y_guardar_clave_aes(cp.id)
     token = generar_token(cp.id)
 
-    db[cp.id]={
+    db["cps"].append({
         "id": cp.id,
         "location": cp.location,
         "registrado": True,
         "estado":"OFFLINE",
         "token": token,
         "aes_key": clave_aes
-    }
+    })
     guardar_db(db)
 
 
@@ -131,10 +126,11 @@ def registrar_cp(cp: CPRegistro):
 @app.delete("/unregister")
 def eliminar_cp(cp: CPId):
     db = cargar_db()
-    if cp.id not in db:
+    entrada = buscar_cp(db, cp.id)
+    if not entrada:
         raise HTTPException(status_code=404, detail="CP no registrado")
 
-    del db[cp.id]
+    db["cps"].remove(entrada)
     guardar_db(db)
 
     return {"message": f"CP {cp.id} eliminado correctamente"}
@@ -143,23 +139,25 @@ def eliminar_cp(cp: CPId):
 @app.post("/token")
 def emitir_token(cp: CPId):
     db = cargar_db()
-    if cp.id not in db:
+    entrada = buscar_cp(db, cp.id)
+    print(entrada)
+    if not entrada:
         raise HTTPException(status_code=403, detail="CP no registrado")
 
     token = generar_token(cp.id)
-    db[cp.id]["token"] = token
+    entrada["token"] = token
     guardar_db(db)
     
-    clave_aes = db[cp.id].get("aes_key", "")
-    return {"token": token, "aes_key": clave_aes}
+    return {"token": token, "aes_key": entrada.get("aes_key", "")}
 
 
 @app.get("/cp/{id}")
 def consultar_cp(id: str):
     db = cargar_db()
-    if id not in db:
+    entrada = buscar_cp(db, id)
+    if not entrada:
         raise HTTPException(status_code=404, detail="CP no registrado")
-    return db[id]
+    return entrada
 
 # =========================
 # MAIN

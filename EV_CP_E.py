@@ -90,6 +90,7 @@ class Engine:
     def estado(self):
         #Engine empieza a escuchar para que el monitor pueda conectarse a el
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.bind(self.ADDR)
         server.listen()
         print(f"[LISTENING] Servidor a la escucha en {self.HOST}")
