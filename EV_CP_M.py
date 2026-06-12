@@ -62,7 +62,7 @@ def generar_token(id_cp):
     tiempo_actual = int(time.time())
     payload = {
         "id": id_cp,
-        "exp": tiempo_actual + 60
+        "exp": tiempo_actual + 300
     }
     return jwt.encode(payload, SECRET_TOKEN, algorithm="HS256")
 
@@ -193,9 +193,10 @@ class Monitor:
             print("conectado con central")
             
             #respuesta 
-            msg_length=self.sock.recv(HEADER).decode(FORMAT)
+            msg_length=self.sock.recv(HEADER).decode(FORMAT).strip()
             #El CP se registra a la base de datos o ya esta registrado
             if msg_length == "DESCONOCIDO":
+                print("d")
                 msg=f"monitor|AUTENTIFICACION|{self.ID}|{self.LOC}|{self.token}"
                 send(msg, self.sock, self.fernet)
                 status=self.sock.recv(2048).decode(FORMAT)

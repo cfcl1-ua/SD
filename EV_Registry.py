@@ -89,7 +89,7 @@ def crear_y_guardar_clave_aes(id_cp: str) -> str:
 def generar_token(id_cp: str) -> str:
     payload = {
         "id": id_cp,
-        "exp": time.time() + 60
+        "exp": time.time() + 300
     }
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
     if isinstance(token, bytes):
