@@ -15,46 +15,6 @@
         "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjkiLCJleHAiOjE3Njc4ODk0NTguMjY3MDg4NH0.SCy5UGjpOsB3ybzWj63dDRnsxkHOLWpG26XDGXuT1G4",
         "aes_key": "N4kAaiXsGcREdbY4lYvo97Nik9UH9w38l_Wf7PsigPM="
     },
-    "21": {
-        "id": "21",
-        "location": "barrow",
-        "registrado": false,
-        "estado": "OFFLINE",
-        "token": "",
-        "aes_key": ""
-    },
-    "22": {
-        "id": "22",
-        "location": "new york",
-        "registrado": false,
-        "estado": "OFFLINE",
-        "token": "",
-        "aes_key": ""
-    },
-    "23": {
-        "id": "23",
-        "location": "los angeles",
-        "registrado": false,
-        "estado": "OFFLINE",
-        "token": "",
-        "aes_key": ""
-    },
-    "24": {
-        "id": "24",
-        "location": "chicago",
-        "registrado": false,
-        "estado": "OFFLINE",
-        "token": "",
-        "aes_key": ""
-    },
-    "25": {
-        "id": "25",
-        "location": "miami",
-        "registrado": false,
-        "estado": "OFFLINE",
-        "token": "",
-        "aes_key": ""
-    },
     "32": {
         "id": "32",
         "location": "sevilla",
