@@ -273,75 +273,78 @@ def handle_client(conn, addr):
     ip_origen = addr[0]
     id_cp_sesion = None
     fernet_cp = None
+    print(f"[DEBUG] Nueva conexion desde {addr}")
 
     try:
-        # -------------------------------------------------------
-        # PASO 1: Primer mensaje en claro — PETICION
-        # -------------------------------------------------------
+        # PASO 1: mensaje en claro
         msg_length = conn.recv(HEADER).decode(FORMAT).strip()
+        print(f"[DEBUG] Header recibido: '{msg_length}'")
         if not msg_length:
             conn.close()
             CONEX_ACTIVAS -= 1
             return
 
         raw = conn.recv(int(msg_length)).decode(FORMAT)
+        print(f"[DEBUG] Mensaje paso1: '{raw}'")
         parts = raw.split("|")
 
-        # Esperamos: monitor|PETICION|<id>|IDLE
         if parts[0] != "monitor" or len(parts) < 3:
+            print(f"[DEBUG] Mensaje invalido: {parts}")
             conn.send("0".encode(FORMAT))
             conn.close()
             CONEX_ACTIVAS -= 1
             return
 
         id_cp_sesion = parts[2]
+        print(f"[DEBUG] CP identificado: {id_cp_sesion}")
 
-        # Verificar si hay demasiadas conexiones
         if CONEX_ACTIVAS > 10:
             conn.send("DEMASIADAS CONEXIONES".encode(FORMAT))
             conn.close()
             CONEX_ACTIVAS -= 1
             return
 
-        # Aceptar conexión
-        conn.send("1".encode(FORMAT))
-
-        # Indicar si el CP ya está registrado en nuestra BD
         if id_cp_sesion in CPS_IDX:
+            print(f"[DEBUG] CP conocido -> enviando REGISTRADO")
             conn.send("REGISTRADO".encode(FORMAT).ljust(HEADER))
-            # CP ya conocido: obtener su clave del Registry para descifrar mensajes siguientes
             clave_aes = obtener_clave_registry(id_cp_sesion)
+            print(f"[DEBUG] Clave del Registry: {clave_aes is not None}")
             if clave_aes:
                 CP_KEYS[id_cp_sesion] = clave_aes
                 CP_SOCKETS[id_cp_sesion] = conn
                 fernet_cp = Fernet(clave_aes.encode() if isinstance(clave_aes, str) else clave_aes)
             audit("RECONEXION", f"CP {id_cp_sesion} reconectado", ip_origen)
         else:
+            print(f"[DEBUG] CP desconocido -> enviando DESCONOCIDO")
             conn.send("DESCONOCIDO".encode(FORMAT).ljust(HEADER))
-            # Obtener clave del Registry ya ahora para poder descifrar el siguiente mensaje
             clave_aes = obtener_clave_registry(id_cp_sesion)
+            print(f"[DEBUG] Clave del Registry: {clave_aes is not None}")
             if clave_aes:
                 fernet_cp = Fernet(clave_aes.encode() if isinstance(clave_aes, str) else clave_aes)
+            else:
+                print(f"[DEBUG] AVISO: sin clave AES, no se podra descifrar el siguiente mensaje")
 
-        # -------------------------------------------------------
-        # PASO 2 en adelante: mensajes cifrados
-        # -------------------------------------------------------
+        # PASO 2: mensajes cifrados
         while True:
             msg_length = conn.recv(HEADER).decode(FORMAT).strip()
+            print(f"[DEBUG] Header paso2: '{msg_length}'")
             if not msg_length:
                 continue
 
             raw_bytes = conn.recv(int(msg_length))
+            print(f"[DEBUG] Bytes recibidos: {len(raw_bytes)}, fernet: {fernet_cp is not None}")
 
-            # Descifrar si tenemos Fernet, si no intentar en claro
             if fernet_cp:
                 try:
                     msg = fernet_cp.decrypt(raw_bytes).decode(FORMAT)
-                except Exception:
+                    print(f"[DEBUG] Descifrado OK: '{msg[:80]}'")
+                except Exception as e:
+                    print(f"[DEBUG] ERROR descifrado: {e}")
                     audit("ERROR_DESCIFRADO", f"No se pudo descifrar mensaje de CP {id_cp_sesion}", ip_origen)
                     break
             else:
                 msg = raw_bytes.decode(FORMAT)
+                print(f"[DEBUG] Mensaje en claro: '{msg[:80]}'")
 
             if msg == FIN:
                 break
@@ -353,19 +356,21 @@ def handle_client(conn, addr):
             peticion = parts[1]
             id_cp    = parts[2]
 
-            # AUTENTIFICACION: monitor|AUTENTIFICACION|<id>|<loc>|<token>
             if peticion in ("AUTENTIFICACION", "AUTENTICACION"):
                 loc   = parts[3] if len(parts) > 3 else "UNKNOWN"
                 token = parts[4] if len(parts) > 4 else None
+                print(f"[DEBUG] Autenticacion de CP {id_cp}, loc={loc}, token={'si' if token else 'no'}")
 
                 if not token or not validar_jwt(token, id_cp):
-                    audit("AUTENTICACION_FALLIDA", f"CP {id_cp} JWT inválido o ausente", ip_origen)
+                    audit("AUTENTICACION_FALLIDA", f"CP {id_cp} JWT invalido o ausente", ip_origen)
+                    print(f"[DEBUG] JWT invalido para CP {id_cp}")
                     conn.send("CP no autorizado".encode(FORMAT))
                     continue
 
                 clave_aes = obtener_clave_registry(id_cp)
                 if not clave_aes:
                     audit("AUTENTICACION_FALLIDA", f"CP {id_cp} no encontrado en Registry", ip_origen)
+                    print(f"[DEBUG] CP {id_cp} no encontrado en Registry")
                     conn.send("CP no registrado en Registry".encode(FORMAT))
                     continue
 
@@ -379,9 +384,9 @@ def handle_client(conn, addr):
                     CPS.append({"id": id_cp, "location": loc, "estado": "AVAILABLE"})
 
                 audit("AUTENTICACION_OK", f"CP {id_cp} autenticado. Clave AES entregada.", ip_origen)
+                print(f"[DEBUG] Autenticacion OK para CP {id_cp}")
                 conn.send(f"central|OK|{clave_aes}".encode(FORMAT))
 
-            # ESTADO: monitor|ESTADO|<id>|<estado>
             elif peticion == "ESTADO":
                 estado = parts[3] if len(parts) > 3 else "UNKNOWN"
                 if id_cp not in CPS_IDX:
@@ -392,11 +397,10 @@ def handle_client(conn, addr):
                 audit("ESTADO_CP", f"CP {id_cp} -> {estado}", ip_origen)
                 conn.send("central|OK".encode(FORMAT))
 
-            # TOKEN: monitor|TOKEN|<id>|<nuevo_token>
             elif peticion == "TOKEN":
                 nuevo_token = parts[3] if len(parts) > 3 else None
                 if not nuevo_token or not validar_jwt(nuevo_token, id_cp):
-                    audit("TOKEN_RENOVACION_FALLIDA", f"CP {id_cp} token inválido", ip_origen)
+                    audit("TOKEN_RENOVACION_FALLIDA", f"CP {id_cp} token invalido", ip_origen)
                     conn.send("central|ERROR|JWT_INVALIDO".encode(FORMAT))
                     continue
                 audit("TOKEN_RENOVADO", f"Token de CP {id_cp} renovado", ip_origen)
@@ -407,6 +411,7 @@ def handle_client(conn, addr):
                 conn.send("central|ERROR|DESCONOCIDA".encode(FORMAT))
 
     except Exception as e:
+        print(f"[DEBUG] Excepcion en handle_client: {e}")
         audit("ERROR_SOCKET", f"Error con cliente {addr}: {e}")
 
     finally:
@@ -415,20 +420,6 @@ def handle_client(conn, addr):
         conn.close()
         CONEX_ACTIVAS -= 1
 
-# =========================================================
-# KAFKA
-# =========================================================
-
-KAFKA_SECRET_KEY = b'MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE='
-fernet_kafka = Fernet(KAFKA_SECRET_KEY)
-
-def decrypt_kafka_msg(v):
-    try:
-        if v:
-            return fernet_kafka.decrypt(v).decode(FORMAT)
-    except Exception as e:
-        audit("ERROR_DESCIFRADO_KAFKA", f"No se pudo descifrar mensaje: {e}")
-    return None
 
 def create_consumer(bootstrap):
     return KafkaConsumer(
