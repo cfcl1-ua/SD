@@ -17,6 +17,7 @@ HEADER = 64
 PORT = 5050
 FORMAT = "utf-8"
 FIN = "FIN"
+PRICE_PER_KWH = 0.20 # Precio por kWh ficticio
 
 TOPIC_DTC = "driver-to-central"
 TOPIC_ETC = "engine-to-central"
@@ -456,33 +457,212 @@ def handle_client(conn, addr):
             del CP_SOCKETS[id_cp_sesion]
         conn.close()
         CONEX_ACTIVAS -= 1
+        
+def addCustomer(driver_id):
+    """Añade el ID del conductor a la lista de clientes si no existe."""
+    db = loadDB()
+    if "clientes" not in db:
+        db["clientes"] = []
+    
+    id_str = str(driver_id)
+    if id_str not in db["clientes"]:
+        db["clientes"].append(id_str)
+        saveDB(db)
+        print(f"[CENTRAL] Conductor {id_str} guardado exitosamente en db.json")
+        return True
+    return False
+
+# =========================================================
+# LÓGICA DE BROKERS Y KAFKA
+# =========================================================
+
+def topics_id(id):
+    return f"central-to-consumer-{id}"
+
+def replyToDriver(producer, respuesta, cp_id, driver_id):
+    if cp_id is None:
+        cp_id = ""
+
+    payload = f"central|{respuesta}|{cp_id}|{driver_id}"
+    topic_resp = topics_id(driver_id)
+
+    try:
+        producer.send(topic_resp, payload.encode(FORMAT))
+        producer.flush(1)
+        print(f"[CENTRAL → DRIVER {driver_id}] {payload}")
+    except Exception as e:
+        print(f"[ERROR] Fallo enviando respuesta al driver {driver_id}: {e}")
+        
+def replyToEngine(producer, peticion, cp_id, driver_id):
+    topic_resp = f"central-to-engine-{cp_id}"
+    payload = f"central|{peticion}|{cp_id}|{driver_id}"
+    
+    # Ciframos el mensaje hacia el Engine usando su clave AES
+    clave = CP_KEYS.get(cp_id)
+    if clave:
+        try:
+            f = Fernet(clave.encode() if isinstance(clave, str) else clave)
+            payload_cifrado = f.encrypt(payload.encode(FORMAT))
+            producer.send(topic_resp, payload_cifrado)
+            producer.flush(1)
+            print(f"[CENTRAL → ENGINE {cp_id}] Petición cifrada enviada.")
+        except Exception as e:
+            print(f"[ERROR] No se pudo cifrar hacia ENGINE {cp_id}: {e}")
+    else:
+        print(f"[AVISO] El CP {cp_id} no tiene clave registrada. No se puede enviar.")
+    
+def attendToDriver(peticion, cp_id, driver_id, producer=None):
+    if peticion == "AUTENTIFICACION":
+        if addCustomer(driver_id):
+            replyToDriver(producer, "OK", "", driver_id)
+            return "central|OK"
+        else:
+            replyToDriver(producer, "ERROR:YA_REGISTRADO", "", driver_id)
+            return "central|ERROR"
+
+    if peticion in ("AUTORIZACION", "ESTADO", "FIN"):
+        if cp_id not in CPS_IDX:
+            replyToDriver(producer, f"{peticion}:ERROR_CP_DESCONOCIDO", cp_id, driver_id)
+            return "central|ERROR"
+
+        if peticion in ("AUTORIZACION", "ESTADO"):
+            replyToDriver(producer, f"{peticion}:ENVIADO_AL_ENGINE", cp_id, driver_id)
+
+        if producer is not None:
+            replyToEngine(producer, peticion, cp_id, driver_id)
+
+        return "central|OK"
+
+    replyToDriver(producer, "ERROR:PETICION_DESCONOCIDA", cp_id, driver_id)
+    return "central|ERROR"
+
+def attendToEngine(producer, respuesta, cp_id, driver_id):
+    if respuesta.isdigit():
+        segundos = int(respuesta)
+        horas = segundos / 3600
+        precio = horas * PRICE_PER_KWH
+        mensaje = f"FIN|TIEMPO:{segundos}|PRECIO:{precio:.2f}"
+        replyToDriver(producer, mensaje, cp_id, driver_id)
+        
+        # Al terminar, liberamos el cargador actualizándolo en la BBDD
+        updateStatusCP(cp_id, "AVAILABLE")
+        print(f"[CENTRAL] Enviado FIN con tiempo y precio a Driver {driver_id}")
+    else:
+        mensaje = f"ESTADO|{respuesta}"
+        replyToDriver(producer, mensaje, cp_id, driver_id)
+        
+        # Guardamos en la base de datos el nuevo estado (ej. CHARGING, ERROR...)
+        updateStatusCP(cp_id, respuesta)
+        print(f"[CENTRAL] Estado {respuesta} reenviado al Driver {driver_id} y guardado en DB")
+        
+        
+def create_producer(bootstrap):
+    try:
+        # Nota: quitamos el value_serializer global para poder mandar bytes (cifrados)
+        producer = KafkaProducer(
+            bootstrap_servers=[bootstrap],
+            linger_ms=10,
+        )
+        print(f"[CENTRAL] Productor conectado a {bootstrap}")
+        return producer
+    except Exception as e:
+        print(f"[CENTRAL] No puedo crear el productor en '{bootstrap}': {e}")
+        raise
 
 
 def create_consumer(bootstrap):
     return KafkaConsumer(
-        TOPIC_DTC, TOPIC_ETC,
-        bootstrap_servers=[bootstrap],
-        value_deserializer=decrypt_kafka_msg,
-        auto_offset_reset="earliest",
-        group_id="central-group"
-    )
+            TOPIC_DTC,
+            TOPIC_ETC,
+            bootstrap_servers=[bootstrap],
+            auto_offset_reset="latest",
+            enable_auto_commit=True,
+            group_id="central-mixed-group"
+        )
 
-def receive_messages(consumer):
+
+def receive_messages(consumer, producer):
+    """
+    Bucle unificado que separa el tráfico:
+    - TOPIC_DTC (Driver): Texto plano.
+    - TOPIC_ETC (Engine): Cifrado AES (Fernet).
+    """
     for msg in consumer:
-        try:
-            raw = msg.value
-            if raw is None:
-                continue
-            audit("MENSAJE_KAFKA", raw)
-        except Exception as e:
-            audit("ERROR_KAFKA", f"Mensaje ilegible: {e}")
+        raw_bytes = msg.value
+        if not raw_bytes:
+            continue
+
+        origen_topic = msg.topic
+
+        # ===============================================
+        # CANAL DRIVER (TEXTO PLANO)
+        # ===============================================
+        if origen_topic == TOPIC_DTC:
+            try:
+                text = raw_bytes.decode(FORMAT)
+                parts = text.split("|")
+                if len(parts) >= 4 and parts[0].lower() == "driver":
+                    peticion  = parts[1]
+                    cp_id     = parts[2]
+                    driver_id = parts[3]
+                    print(f"\n[CENTRAL-KAFKA] Recibido DRIVER: {text}")
+                    attendToDriver(peticion, cp_id, driver_id, producer)
+            except Exception as e:
+                print(f"[ERROR] Fallo leyendo mensaje de driver: {e}")
+
+        # ===============================================
+        # CANAL ENGINE (CIFRADO FERNET)
+        # ===============================================
+        elif origen_topic == TOPIC_ETC:
+            descifrado_exitoso = False
+            text = ""
+            
+            # Como el Engine cifra todo el payload, intentamos descifrar 
+            # probando las claves activas hasta que una funcione
+            for cp_key_id, aes_key in CP_KEYS.items():
+                try:
+                    f = Fernet(aes_key.encode() if isinstance(aes_key, str) else aes_key)
+                    text = f.decrypt(raw_bytes).decode(FORMAT)
+                    descifrado_exitoso = True
+                    break
+                except Exception:
+                    continue
+            
+            if descifrado_exitoso:
+                parts = text.split("|")
+                if len(parts) >= 4 and parts[0].lower() == "engine":
+                    peticion  = parts[1]
+                    cp_id     = parts[2]
+                    driver_id = parts[3]
+                    
+                    print(f"\n[CENTRAL-KAFKA] Recibido ENGINE (Descifrado): {text}")
+                    attendToEngine(producer, peticion, cp_id, driver_id)
+            else:
+                print("\n[CENTRAL-KAFKA] AVISO: Recibido paquete ENGINE cifrado que no pudo ser desencriptado.")
 
 def run_kafka_loop(bootstrap):
+    """Crea consumer/producer y entra al bucle Kafka (hilo dedicado)."""
+    consumer = None
+    producer = None
     try:
         consumer = create_consumer(bootstrap)
-        receive_messages(consumer)
+        producer = create_producer(bootstrap)
+        receive_messages(consumer, producer)   # bucle bloqueante
     except Exception as e:
-        audit("ERROR_KAFKA", f"No se pudo conectar al broker: {e}")
+        print(f"[CENTRAL] Hilo Kafka terminado con error: {e}")
+    finally:
+        try:
+            if consumer is not None:
+                consumer.close()
+        except Exception:
+            pass
+        try:
+            if producer is not None:
+                producer.flush()
+                producer.close()
+        except Exception:
+            pass    
+    
 
 # =========================================================
 # SOCKET SERVER GENERAL

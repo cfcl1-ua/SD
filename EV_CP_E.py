@@ -11,47 +11,51 @@ FIN = "FIN"
 MAX_CONEXIONES = 3
 TOPIC_CENTRAL = "engine-to-central"
 
-KAFKA_SECRET_KEY = b'MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE='
-fernet_kafka = Fernet(KAFKA_SECRET_KEY)
-
-# Función segura para descifrar en el consumer
-def decrypt_kafka_msg(v):
-    try:
-        if v:
-            return fernet_kafka.decrypt(v).decode(FORMAT)
-    except Exception as e:
-        print(f"[ERROR KAFKA DESCIFRADO] {e}")
-    return None
-
-def fernet_kafka_encrypt(data: bytes) -> bytes:
-    return fernet_kafka.encrypt(data)
 
 #Al conectarse correctamente empieza a enviar periodicamente el estado al monitor
 def handle_client(conn, addr, engine):
     print("MONITOR connected.")
-
+    inicializado = False
     while True:
-        msg_length = conn.recv(HEADER).decode(FORMAT)
-        if msg_length:
-            msg_length = int(msg_length)
-            msg = conn.recv(msg_length).decode(FORMAT)
-            parts=msg.split("|")
-            engine.id=parts[1]
-            engine.consumidor()
-            stat=parts[2]
+        try:
+            msg_length = conn.recv(HEADER).decode(FORMAT)
+            if msg_length:
+                msg_length = int(msg_length)
+                msg = conn.recv(msg_length).decode(FORMAT)
+                parts = msg.split("|")
+                
+                engine.id = parts[1]
+                stat = parts[2]
+                
+                if not inicializado:
+                    if len(parts) >= 4:
+                        clave = parts[3]
+                        engine.set_aes_key(clave)
+                
+                    engine.consumidor()
+                    inicializado=True
+                
+                if stat == "ok":
+                    if engine.status != "ERROR":
+                        conn.send(f"ENGINE|{engine.status}".encode(FORMAT))
+                    else:
+                        engine.status = "ERROR"
+                        conn.send(f"ENGINE|{engine.status}".encode(FORMAT))
+                        break
+            else:
+                break
+        except Exception as e:
+            print(f"\n[ERROR EN ENGINE] Falló la comunicación o inicialización: {e}")
+            import traceback
+            traceback.print_exc()
+            break
             
-            #Recibe un primer mensaje de confirmacion
-            if stat == "ok":
-                #Se avisa al monitor del estado y si es un error el engine lo reporta y se desconecta del monitor
-                if engine.status!="ERROR":
-                    conn.send(f"ENGINE|{engine.status}".encode(FORMAT))
-                else:
-                    engine.status="ERROR"
-                    conn.send(f"ENGINE|{engine.status}".encode(FORMAT))
-                    break
-    print("Se rompio la conexion")
-    engine.status="OFFLINE"
-    conn.shutdown(socket.SHUT_RDWR)
+    print("Se rompió la conexion con el monitor")
+    engine.status = "OFFLINE"
+    try:
+        conn.shutdown(socket.SHUT_RDWR)
+    except:
+        pass
     conn.close()
     engine.conexiones -= 1
     
@@ -69,23 +73,33 @@ class Engine:
         self.id=None
         self.driver=None
         self.consumer=None
+        self.fernet = None
+        self.producer = None
+        
+    def set_aes_key(self, clave_aes):
+        """Configura el motor de cifrado y el Productor Kafka dinámicamente"""
+        self.fernet = Fernet(clave_aes.encode() if isinstance(clave_aes, str) else clave_aes)
         
         self.producer = KafkaProducer(
-        bootstrap_servers=[self.ADDR_SERVER],
-        value_serializer=lambda v: fernet_kafka_encrypt(v.encode(FORMAT))
+            bootstrap_servers=[self.ADDR_SERVER],
+            # Usamos nuestra instancia dinámica de fernet
+            value_serializer=lambda v: self.fernet.encrypt(v.encode(FORMAT))
         )
+        print("[ENGINE] Clave AES instalada correctamente. Cifrado activado.")
         
         
     def consumidor(self):
-        topic=f"central-to-consumer-{self.id}"
+        topic = f"central-to-engine-{self.id}"
         self.consumer = KafkaConsumer(
-        topic,
-        bootstrap_servers=[self.ADDR_SERVER],
-        auto_offset_reset='earliest',
-        enable_auto_commit=True,
-        group_id='cliente_A',
-        value_deserializer=decrypt_kafka_msg   
+            topic,
+            bootstrap_servers=[self.ADDR_SERVER],
+            auto_offset_reset='latest',
+            enable_auto_commit=True,
+            group_id=f'engine_group_{self.id}',
+            # Desciframos dinámicamente usando self.fernet
+            value_deserializer=lambda v: self.fernet.decrypt(v).decode(FORMAT) if v else None
         )
+        print(f"[ENGINE] Suscrito correctamente al topic de la Central: {topic}")
         
     def estado(self):
         #Engine empieza a escuchar para que el monitor pueda conectarse a el

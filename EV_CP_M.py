@@ -101,7 +101,12 @@ def obtener_token(id_cp, ip_registry="localhost", puerto_registry=9100 ,localiza
 
 #Mensaje que mandara al servidor 
 def send(msg, client_socket, fernet):
-    message = fernet.encrypt(msg.encode(FORMAT))
+    if fernet is not None:
+        message = fernet.encrypt(msg.encode(FORMAT))
+    # Si nos pasan None, lo enviamos en texto claro normal
+    else:
+        message = msg.encode(FORMAT)
+    
     msg_length = len(message)
     send_length = str(msg_length).encode(FORMAT)
     send_length += b' ' * (HEADER - len(send_length)) 
@@ -123,7 +128,7 @@ class Monitor:
         self.sock=None
         self.token = None
         self.fernet = None
-        
+        self.clave_aes = None
 
         
     def autenticar_registry(self):
@@ -164,56 +169,83 @@ class Monitor:
         return True
         
     #conecta con central
-    
-
     def conectar_central(self):
         print("[DEBUG] Creando socket del Monitor...")
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.connect(self.addr)
-        print(f"[DEBUG] Token a enviar: {self.token}")
+        try:
+            self.sock.connect(self.addr)
+            print(f"[DEBUG] Token a enviar: {self.token}")
 
-        msg=f"monitor|PETICION|{self.ID}|IDLE"
-        msg_length = str(len(msg.encode(FORMAT)))
-        self.sock.send(msg_length.encode(FORMAT).ljust(HEADER))
-        self.sock.send(msg.encode(FORMAT))
-        
-        response=self.sock.recv(2048).decode(FORMAT).strip()
-        #mensaje de confirmacion de central
-        print(f"[DEBUG] Respuesta recibida: '{response}'")
-        
-        if "DEMASIADAS" in response.upper():
-            print("El servidor central está lleno. Espera un momento e inténtalo de nuevo.")
-            self.sock.close()
-            return False
-        if "ERROR" in response :
-            print(f"[ERROR] Central rechazó la conexión: {response}")
-            self.sock.close()
-            return False
-        if response == "DESCONOCIDO":
-            msg = f"monitor|AUTENTIFICACION|{self.ID}|{self.LOC}|{self.token}"
-            send(msg, self.sock, self.fernet)
-            status = self.sock.recv(2048).decode(FORMAT)
-            print(f"[CENTRAL] {status}")
-            return True
-        elif response == "REGISTRADO":
-            print("CP ya registrado en Central.")
-            return True
+            msg=f"monitor|PETICION|{self.ID}|IDLE"
+            msg_length = str(len(msg.encode(FORMAT)))
+            self.sock.send(msg_length.encode(FORMAT).ljust(HEADER))
+            self.sock.send(msg.encode(FORMAT))
             
-        else:
-            print(f"[ERROR] Respuesta inesperada de Central: {response}")
-            self.sock.close()
-            return False
+            response=self.sock.recv(2048).decode(FORMAT).strip()
+            #mensaje de confirmacion de central
+            print(f"[DEBUG] Respuesta recibida: '{response}'")
+            
+            if response == "REGISTRADO":
+                print("CP ya registrado en Central.")
+            elif response == "DESCONOCIDO":
+                print("CP nuevo para la Central.")
+            else:
+                print(f"Respuesta inesperada: {response}")
+                return
+
+            print(f"[DEBUG] Token a enviar: {self.token}")
+            # 2. Enviar autenticación en claro
+            msg_auth = f"monitor|AUTENTIFICACION|{self.ID}|{self.LOC}|{self.token}"
+            send(msg_auth, self.sock, self.fernet)
+                
+            respuesta = self.sock.recv(1024).decode(FORMAT)
+            parts = respuesta.split("|")
+                
+            if parts[0] == "central" and parts[1] == "OK":
+                if len(parts) > 2:
+                    clave_str = parts[2]
+                    self.clave_aes = clave_str # ¡AÑADIDO! Nos guardamos la clave
+                        
+                    print(f"[MONITOR] Clave AES recibida: {clave_str}")
+                    self.fernet = Fernet(clave_str.encode() if isinstance(clave_str, str) else clave_str)
+                    print("[MONITOR] Cifrado con Fernet configurado exitosamente.")
+                    return True
+            else: 
+                print(f"[MONITOR] Autenticación fallida: {respuesta}")
+                    
+        except Exception as e:
+            print(f"[MONITOR] Error de conexión: {e}")
         
     #verifica el estado de engine
     def estado(self):  #cliente
+        print("[MONITOR] Hilo de supervisión iniciado.")
         client_engine= socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client_engine.settimeout(8)
+        conectado = False
+        intentos = 0
+        
+        # Bucle de reconexión: intentará conectar al Engine hasta 10 veces
+        while not conectado and intentos < 10:
+            try:
+                client_engine.connect(self.addr_engine)
+                conectado = True
+                print("[MONITOR] Conectado al Engine local correctamente.")
+            except (ConnectionRefusedError, socket.timeout):
+                print(f"[MONITOR] Esperando a que el Engine arranque... (Intento {intentos+1}/10)")
+                time.sleep(2)
+                intentos += 1
+        if not conectado:
+            print("[MONITOR] No se pudo conectar al Engine tras varios intentos. Abortando.")
+            return
+        
         try:
-            client_engine.connect(self.addr_engine)
-            print ("Conexion establecida con engine")
             while True:
-                
-                msg_stat=f"ENGINE|{self.ID}|ok"
+                    
+                if self.clave_aes:
+                    msg_stat = f"monitor|{self.ID}|ok|{self.clave_aes}"
+                else:
+                    msg_stat = f"monitor|{self.ID}|ok"
+                    
                 msg_bytes = msg_stat.encode(FORMAT)
                 msg_length = str(len(msg_bytes)).encode(FORMAT)
                 msg_length += b' ' * (HEADER - len(msg_length))
@@ -221,42 +253,42 @@ class Monitor:
                 client_engine.send(msg_bytes)
                 status=client_engine.recv(2048).decode(FORMAT)
                 time.sleep(1)
-                  
+                      
                 #el engine activa el boton KO o no funciona
                 if(status == "ENGINE|ERROR"):
-                      
+                          
                     msg_stat=f"monitor|ESTADO|{self.ID}|ERROR"
                     send(msg_stat, self.sock, self.fernet)
-                      
+                          
                     print("Averia reportada")
                     break
-                    #El engine esta en uso
+                        #El engine esta en uso
                 elif (status=="ENGINE|CHARGING"):
-                      
+                          
                     msg_stat=f"monitor|ESTADO|{self.ID}|CHARGING"
                     send(msg_stat, self.sock, self.fernet)
-                    #El engine no envia mas mensajes por lo tanto esta cerrado
+                        #El engine no envia mas mensajes por lo tanto esta cerrado
                 elif not status:
                     print("Se cerro la conexion")
                     msg_stat=f"monitor|ESTADO|{self.ID}|ERROR"
                     send(msg_stat, self.sock, self.fernet)
-                      #El estado funciona perfectamente y no esta en uso
+                          #El estado funciona perfectamente y no esta en uso
                 else:
                     msg_stat=f"monitor|ESTADO|{self.ID}|IDLE"
                     send(msg_stat, self.sock, self.fernet)
-                    
+                        
         #Si el monitor no logra conectarse al engine se interpretara que el engine esta desconectado
         except socket.timeout:
             print("No se pudo conectar al Engine.")
             msg_stat=f"monitor|ESTADO|{self.ID}|OFFLINE"
             send(msg_stat, self.sock, self.fernet)
-             
+                 
         except ConnectionRefusedError:
             print("El servidor no está disponible.")
-            
+                
         except (ConnectionResetError, BrokenPipeError):
             print("[ERROR] Conexión con engine cerrada.")
-        
+            
         finally:
             print("[DEBUG] Conexión con central cerrada")
             client_engine.close()

@@ -5,6 +5,24 @@ import time
 import argparse
 import sys
 
+import selectors  # <-- Asegúrate de añadir este import si no está
+
+# =========================================================================
+# 🔥 PARCHE DE COMPATIBILIDAD OBLIGATORIO PARA PYTHON 3.12+ (EVITA DESCRIPTOR -1)
+# =========================================================================
+for selector_name in ['SelectSelector', 'PollSelector', 'EpollSelector', 'KqueueSelector']:
+    if hasattr(selectors, selector_name):
+        cls = getattr(selectors, selector_name)
+        orig_unregister = cls.unregister
+        def _crear_safe(func_original):
+            def safe_unregister(self, fileobj):
+                try:
+                    return func_original(self, fileobj)
+                except (KeyError, ValueError):
+                    return None
+            return safe_unregister
+        cls.unregister = _crear_safe(orig_unregister)
+# =========================================================================
 
 class ChargingPoint:
     """
@@ -98,10 +116,10 @@ if __name__ == "__main__":
         if activo:
             print("m")
             #hilo donde monitor checara el estado del punto de arga
-            hilo_trabajo = threading.Thread(target=Punto.Engine.estado)
-            hilo_supervision = threading.Thread(target=Punto.Monitor.estado)
+            hilo_trabajo = threading.Thread(target=Punto.Engine.estado, daemon=True)
+            hilo_supervision = threading.Thread(target=Punto.Monitor.estado, daemon=True)
             #hilo donde el engine realizara los servicios enviados por central
-            hilo_peticiones = threading.Thread(target=Punto.Engine.servicios)
+            hilo_peticiones = threading.Thread(target=Punto.Engine.servicios, daemon=True)
         
 
             hilo_trabajo.start()

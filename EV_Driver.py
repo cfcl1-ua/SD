@@ -2,6 +2,7 @@ from kafka import KafkaProducer, KafkaConsumer
 import sys
 import time
 import threading
+import selectors  # Importante para el parche
 
 FORMAT = 'utf-8'
 DELAYS = 4  # segundos entre solicitudes
@@ -9,7 +10,19 @@ DELAYS = 4  # segundos entre solicitudes
 # TOPICS globales (iguales para todos)
 TOPIC_DTC = "driver-to-central"       # Drivers -> Central
 
-
+for selector_name in ['SelectSelector', 'PollSelector', 'EpollSelector', 'KqueueSelector']:
+    if hasattr(selectors, selector_name):
+        cls = getattr(selectors, selector_name)
+        orig_unregister = cls.unregister
+        def _crear_safe(func_original):
+            def safe_unregister(self, fileobj):
+                try:
+                    return func_original(self, fileobj)
+                except (KeyError, ValueError):
+                    return None
+            return safe_unregister
+        cls.unregister = _crear_safe(orig_unregister)
+# =========================================================================
 
 def menu():
     opciones = {"1": "AUTENTIFICACION", "2": "AUTORIZACION", "3": "ESTADO", "4": "FIN"}
@@ -35,11 +48,12 @@ def sendRequests(bootstrap_server: str, driver_id: str):
     try:
         producer = KafkaProducer(
             bootstrap_servers=[bootstrap_server],
-            value_serializer=lambda v: v.encode(FORMAT)
+            acks='all',
+            retries=3
         )
-    except NoBrokersAvailable:
-        print("❌ Error: No se pudo conectar a la central Kafka. Verifica que esté encendida.")
-        sys.exit(1)
+    except Exception as e:
+        print(f"[DRIVER][CRÍTICO] Error al conectar con el Broker de Kafka: {e}")
+        return
         
     print(f"[DRIVER] Conectado a Kafka en {bootstrap_server}")
     cp_id = "None"
@@ -54,17 +68,23 @@ def sendRequests(bootstrap_server: str, driver_id: str):
                 continue
 
         msg = f"DRIVER|{tipo}|{cp_id}|{driver_id}"
-        producer.send(TOPIC_DTC, msg)
-        producer.flush()
-        print(f"[DRIVER] Enviado → ({TOPIC_DTC}): {msg}")
-
-        if tipo == "FIN":
-            print("[DRIVER] Fin de sesión.")
-            break
+        try:
+            print(f"[DRIVER] Enviando mensaje: '{msg}'...")
+            # Enviamos como bytes puros UTF-8 para sincronizar con el receptor limpio de Central
+            futuro = producer.send(TOPIC_DTC, value=msg.encode(FORMAT))
+            
+            # Bloqueamos un instante para comprobar si el broker aceptó el mensaje de verdad
+            resultado_metadata = futuro.get(timeout=5)
+            print(f"[DRIVER][ÉXITO] Mensaje recibido por Kafka en el topic: {resultado_metadata.topic}")
+            
+            if tipo == "FIN":
+                print("[DRIVER] Petición de finalización enviada. Saliendo del bucle de peticiones...")
+                break
+                
+        except Exception as e:
+            print(f"[DRIVER][ERROR] No se pudo depositar el mensaje en Kafka: {e}")
 
         time.sleep(DELAYS)
-
-    producer.close()
 
 def topics_id(id):
     return f"central-to-consumer-{id}"
@@ -86,7 +106,7 @@ def receiveAnswers(bootstrap_server: str, driver_id: str):
         bootstrap_servers=[bootstrap_server],
         value_deserializer=lambda m: m.decode(FORMAT),
         auto_offset_reset="latest",
-        enable_auto_commit=False,
+        enable_auto_commit=True,
         group_id=f"driver-{driver_id}",  # grupo común de drivers
     )
     print(f"[DRIVER] Escuchando respuestas en '{topic_resp}'…")
